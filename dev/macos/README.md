@@ -1,4 +1,4 @@
-# Building Jellyfin Desktop on macOS
+# Building Mahfin Desktop on macOS
 
 ## Quick Start
 
@@ -30,8 +30,8 @@ dev/macos/test.sh
 
 - `dev/macos/deps/` - Downloaded dependencies (Qt)
 - `build/` - Build output (safe to delete)
-- `build/src/Jellyfin Desktop.app` - Dev build (unbundled, for run.sh)
-- `build/output/Jellyfin Desktop.app` - Release build (bundled, from bundle.sh)
+- `build/src/Mahfin Desktop.app` - Dev build (unbundled, for run.sh)
+- `build/output/Mahfin Desktop.app` - Release build (bundled, from bundle.sh)
 
 ## Scripts
 
@@ -61,7 +61,7 @@ dev/macos/run.sh --software-rendering
 ### Log Files
 
 ```
-~/Library/Logs/Jellyfin Desktop/
+~/Library/Logs/Mahfin Desktop/
 ```
 
 ## Notes

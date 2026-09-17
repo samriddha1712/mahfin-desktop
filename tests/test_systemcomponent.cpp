@@ -33,16 +33,16 @@ void TestSystemComponent::testExtractBaseUrl_data()
     << "https://server.com";
 
   QTest::newRow("https with /web at subpath")
-    << "https://server.com/jellyfin/web/"
-    << "https://server.com/jellyfin";
+    << "https://server.com/mahfin/web/"
+    << "https://server.com/mahfin";
 
   QTest::newRow("https with /web, no trailing slash")
-    << "https://server.com/jellyfin/web"
-    << "https://server.com/jellyfin";
+    << "https://server.com/mahfin/web"
+    << "https://server.com/mahfin";
 
   QTest::newRow("https with nested path before /web")
-    << "https://server.com/path/to/jellyfin/web/"
-    << "https://server.com/path/to/jellyfin";
+    << "https://server.com/path/to/mahfin/web/"
+    << "https://server.com/path/to/mahfin";
 
   // Case insensitivity
   QTest::newRow("https with /WEB uppercase")
@@ -50,8 +50,8 @@ void TestSystemComponent::testExtractBaseUrl_data()
     << "https://server.com";
 
   QTest::newRow("https with /Web mixed case")
-    << "https://server.com/jellyfin/Web/"
-    << "https://server.com/jellyfin";
+    << "https://server.com/mahfin/Web/"
+    << "https://server.com/mahfin";
 
   // Fallback cases - URLs without /web
   QTest::newRow("https root without /web")
@@ -88,8 +88,8 @@ void TestSystemComponent::testExtractBaseUrl_data()
     << "https://server.com";
 
   QTest::newRow("https with /web, query and fragment")
-    << "https://server.com/jellyfin/web/?foo=bar#section"
-    << "https://server.com/jellyfin";
+    << "https://server.com/mahfin/web/?foo=bar#section"
+    << "https://server.com/mahfin";
 
   // Edge cases - partial matches
   QTest::newRow("https with /website (not /web)")

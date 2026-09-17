@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>online.mahfin.Mahfin</id>
+  <name>Mahfin Desktop</name>
+  <summary>Mahfin desktop client</summary>
+  <developer id="online.mahfin">
+    <name>Mahfin</name>
+  </developer>
+  <project_license>GPL-2.0</project_license>
+  <metadata_license>CC0-1.0</metadata_license>
+  <url type="homepage">https://mahfin.online</url>
+  <url type="bugtracker">https://github.com/samriddha1712/mahfin-desktop/issues</url>
+
+  <provides>
+    <binary>mahfin-desktop</binary>
+  </provides>
+  <launchable type="desktop-id">online.mahfin.Mahfin.desktop</launchable>
+
+  <description>
+    <p>
+      Desktop client for Mahfin, built on Qt WebEngine and libmpv. Playback is
+      handled by mpv rather than the browser, so files are played as they are on
+      disk: Matroska, HEVC, 10-bit, DTS, TrueHD and multi-track audio all decode
+      natively and the server does not transcode.
+    </p>
+    <p>Also supports audio passthrough and hardware decoding.</p>
+  </description>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Player</category>
+    <category>TV</category>
+  </categories>
+  <releases>
+    <release version="1.0.0" date="2026-09-17">
+      <description>
+        <p>First release, forked from Jellyfin Desktop 2.0.0.</p>
+        <ul>
+          <li>Rebranded throughout, with its own application ID and config paths</li>
+          <li>Ships pointed at the Mahfin server, so the connect screen is skipped</li>
+          <li>Playback driven by mpv directly from the Mahfin web client</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1" />
+</component>

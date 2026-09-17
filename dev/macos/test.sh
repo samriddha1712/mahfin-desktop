@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Jellyfin Desktop - Run unit tests
+# Mahfin Desktop - Run unit tests
 # Run build.sh first
 set -eu
 

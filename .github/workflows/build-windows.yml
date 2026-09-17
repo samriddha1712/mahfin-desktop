@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   build:
@@ -109,9 +109,9 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact }}-installer
-        path: ${{ github.workspace }}/build/JellyfinDesktop-*.exe
+        path: ${{ github.workspace }}/build/MahfinDesktop-*.exe
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact }}-portable
-        path: ${{ github.workspace }}/build/JellyfinDesktop-*.zip
+        path: ${{ github.workspace }}/build/MahfinDesktop-*.zip

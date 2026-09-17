@@ -1,4 +1,4 @@
-# Building Jellyfin Desktop on Windows
+# Building Mahfin Desktop on Windows
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ dev\windows\test.bat
 
 - `dev/windows/deps/` - Downloaded dependencies (Qt, mpv, etc.)
 - `build/` - Build output (safe to delete)
-- `build/src/Jellyfin Desktop.exe` - Built executable
+- `build/src/Mahfin Desktop.exe` - Built executable
 
 ## Scripts
 
@@ -66,7 +66,7 @@ Common causes:
 ### Log Files
 
 ```
-%LOCALAPPDATA%\Jellyfin Desktop\logs\jellyfin-desktop.log
+%LOCALAPPDATA%\Mahfin Desktop\logs\mahfin-desktop.log
 ```
 
 ## Notes

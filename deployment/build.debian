@@ -6,7 +6,7 @@ set -o xtrace
 # move to source directory
 pushd ${SOURCE_DIR}
 
-# Convert to format like deb12 or ubu2204 like Jellyfin packages
+# Convert to format like deb12 or ubu2204 like Mahfin packages
 IMGSNIP="${IMG:0:3}"
 RELVER="$( grep 'VERSION_ID' /etc/os-release | awk -F'"' '{ print $2 }' | tr -d '.' )"
 DEBVER="${IMGSNIP}${RELVER}"
@@ -16,7 +16,7 @@ sed -i "1 s/-1)/+${DEBVER})/" debian/changelog
 
 # install deps
 echo y | mk-build-deps -i
-rm jellyfin-desktop-build-deps_*
+rm mahfin-desktop-build-deps_*
 
 # build deb
 dpkg-buildpackage -us -uc --pre-clean --post-clean
@@ -24,7 +24,7 @@ dpkg-buildpackage -us -uc --pre-clean --post-clean
 mv /changelog.orig debian/changelog
 
 mkdir -p ${ARTIFACT_DIR}
-mv ../jellyfin*.{deb,dsc,tar.gz,buildinfo,changes} ${ARTIFACT_DIR}/
+mv ../mahfin*.{deb,dsc,tar.gz,buildinfo,changes} ${ARTIFACT_DIR}/
 
 if [[ ${IS_DOCKER} == YES ]]; then
     chown -Rc $(stat -c %u:%g ${ARTIFACT_DIR}) ${ARTIFACT_DIR}

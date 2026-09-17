@@ -5,12 +5,23 @@ if (EXISTS "${CMAKE_SOURCE_DIR}/toolchain.cmake")
   set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/toolchain.cmake")
 endif()
 
-project(JellyfinDesktop CXX C)
+# Must be set before project(), which is where the compiler is probed.
+#
+# Qt 6.9 requires macOS 12, and its frameworks are built for it — linking
+# against them while claiming 10.15 produces a warning per framework and an
+# app bundle that says it runs on systems where Qt will not load. Matching Qt
+# is the honest answer: the binary now declares the oldest macOS it can
+# actually start on.
+if (APPLE)
+  set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+endif()
+
+project(MahfinDesktop CXX C)
 
 # we want this to be able to run clang-tidy
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE BOOL "" FORCE)
 
-option(CHECK_FOR_UPDATES "Enable checking for new versions of Jellyfin" OFF)
+option(CHECK_FOR_UPDATES "Enable checking for new versions of Mahfin" OFF)
 option(OPENELEC "Make an OpenELEC build" OFF)
 option(LINUX_X11POWER "Enable non D-Bus screensaver management" OFF)
 option(USE_STATIC_MPVQT "Build MpvQt from bundled submodule instead of using system library" OFF)
@@ -90,4 +101,4 @@ add_subdirectory(tests)
 
 include(CPackConfiguration)
 
-add_custom_target(install_app_bundle COMMAND ${CMAKE_COMMAND} -P cmake_install.cmake DEPENDS JellyfinDesktop)
+add_custom_target(install_app_bundle COMMAND ${CMAKE_COMMAND} -P cmake_install.cmake DEPENDS MahfinDesktop)

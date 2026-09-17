@@ -15,31 +15,51 @@ MpvVideoItem::MpvVideoItem(QQuickItem *parent)
     Q_EMIT setProperty("gpu-api", "opengl");
     Q_EMIT setProperty("opengl-es", "no");
 #endif
+
+    // Connected here rather than in setPlayerComponent so that the render
+    // context is recorded whichever of the two arrives first.
+    connect(this, &MpvAbstractItem::ready, this, [this]() {
+        qDebug() << "MpvVideoItem render context ready";
+        m_renderContextReady = true;
+        if (m_readyTimeout)
+            m_readyTimeout->stop();
+        maybeInitialize();
+    });
+
+    m_readyTimeout = new QTimer(this);
+    m_readyTimeout->setSingleShot(true);
+    m_readyTimeout->setInterval(10000);
+    connect(m_readyTimeout, &QTimer::timeout, this, [this]() {
+        if (m_initialized || m_renderContextReady)
+            return;
+        qWarning() << "mpv render context never became ready after 10s — starting "
+                      "anyway. Expect audio with no picture; the video item is not "
+                      "being rendered by the scene graph.";
+        m_renderContextReady = true;
+        maybeInitialize();
+    });
+    m_readyTimeout->start();
 }
 
 void MpvVideoItem::setPlayerComponent(PlayerComponent* player)
 {
     qDebug() << "MpvVideoItem::setPlayerComponent called, mpvController():" << mpvController();
     m_player = player;
+    maybeInitialize();
+}
 
-    // When mpv is ready, give controller to PlayerComponent
-    connect(this, &MpvAbstractItem::ready, this, [this]() {
-        qDebug() << "MpvVideoItem ready() signal fired!";
-        if (m_player && mpvController()) {
-            qDebug() << "Setting mpv controller and initializing";
-            m_player->setMpvController(mpvController());
-            m_player->initializeMpv();
-        } else {
-            qWarning() << "ready() fired but m_player:" << m_player << "mpvController():" << mpvController();
-        }
-    });
+void MpvVideoItem::maybeInitialize()
+{
+    if (m_initialized || !m_player || !m_renderContextReady)
+        return;
 
-    // Check if already ready
-    if (mpvController()) {
-        qDebug() << "MpvVideoItem already ready, initializing now";
-        m_player->setMpvController(mpvController());
-        m_player->initializeMpv();
-    } else {
-        qDebug() << "MpvVideoItem not ready yet, waiting for ready() signal";
+    if (!mpvController()) {
+        qWarning() << "render context ready but mpvController() is null";
+        return;
     }
+
+    qDebug() << "Setting mpv controller and initializing";
+    m_initialized = true;
+    m_player->setMpvController(mpvController());
+    m_player->initializeMpv();
 }

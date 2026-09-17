@@ -9,7 +9,7 @@ import Qt.labs.platform as Labs
 Window
 {
   id: mainWindow
-  title: "Jellyfin Desktop"
+  title: "Mahfin Desktop"
   objectName: "mainWindow"
   width: 1280
   height: 720
@@ -252,7 +252,7 @@ Window
     }
     profile.persistentCookiesPolicy: WebEngineProfile.AllowPersistentCookies
     profile.offTheRecord: false
-    profile.storageName: "JellyfinDesktopStorage"
+    profile.storageName: "MahfinDesktopStorage"
 
     Component.onCompleted:
     {
@@ -287,6 +287,20 @@ Window
       if (loadingInfo.status == WebEngineView.LoadStartedStatus)
       {
         console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
+
+        // Stop playback whenever the document is replaced.
+        //
+        // mpv lives out here, not in the page, so it does not go away with it.
+        // A reload, a hard navigation or the window closing tears down the JS
+        // context without running any of the web client's cleanup — and the
+        // film keeps playing, audible, with nothing on screen that belongs to
+        // it. The web client does stop the player on its own route changes,
+        // but it cannot cover this case: a stop posted from `pagehide` is
+        // still queued on the web channel when the page is dismantled, so it
+        // never arrives. Measured, not assumed.
+        //
+        // Harmless when nothing is playing, which includes the first load.
+        components.player.stop();
       }
       else if (loadingInfo.status == WebEngineView.LoadSucceededStatus)
       {
@@ -297,7 +311,7 @@ Window
         console.log("WebEngineLoadRequest failure: " + loadingInfo.url + " error code: " + loadingInfo.errorCode);
         errorLabel.visible = true
         errorLabel.text = "Error loading client, this is bad and should not happen<br>" +
-                          "You can try to <a href='reload'>reload</a> or head to our <a href='http://jellyfin.org'>support page</a><br><br>Actual Error: <pre>" +
+                          "You can try to <a href='reload'>reload</a> or head to our <a href='http://mahfin.online'>support page</a><br><br>Actual Error: <pre>" +
                           loadingInfo.errorString + " [" + loadingInfo.errorCode + "]</pre><br><br>" +
                           "Provide the <a target='_blank' href='file://"+ components.system.logFilePath + "'>logfile</a> as well."
       }
@@ -422,7 +436,7 @@ Window
   Labs.SystemTrayIcon {
     visible: showSystemTrayIcon
     icon.source: "qrc:/images/icon.png"
-    tooltip: "Jellyfin Desktop"
+    tooltip: "Mahfin Desktop"
 
     onActivated: function(reason) {
       if (reason === Labs.SystemTrayIcon.Context) {

@@ -1,7 +1,7 @@
-Source: jellyfin-desktop
+Source: mahfin-desktop
 Section: video
 Priority: optional
-Maintainer:  Izzie Walton <izzie@iwalton.com>, Joshua Boniface <joshua@boniface.me>
+Maintainer: Samriddha <sunny.patel@vovance.com>
 Build-Depends: debhelper (>= 10),
                autoconf,
                automake,
@@ -38,11 +38,11 @@ Build-Depends: debhelper (>= 10),
                unzip,
                qt6-base-private-dev
 Standards-Version: 3.9.4
-Homepage: https://jellyfin.org/
-Vcs-Git: https://github.org/jellyfin/jellyfin-desktop.git
-Vcs-Browser: https://github.org/jellyfin/jellyfin-desktop
+Homepage: https://mahfin.online/
+Vcs-Git: https://github.com/samriddha1712/mahfin-desktop.git
+Vcs-Browser: https://github.com/samriddha1712/mahfin-desktop
 
-Package: jellyfin-desktop
+Package: mahfin-desktop
 Architecture: any
 Depends: ${shlibs:Depends},
          qml6-module-qtwebengine,
@@ -52,5 +52,8 @@ Depends: ${shlibs:Depends},
          qml6-module-qtqml-workerscript,
          qml6-module-qtquick-templates,
          qml6-module-qt-labs-platform
-Description: Jellyfin is the Free Software Media System.
- This package provides the Jellyfin desktop media player.
+Description: Mahfin desktop client with mpv playback
+ Desktop client for a Mahfin server, built on Qt WebEngine and libmpv.
+ Plays the original file untouched in almost every case: Matroska, HEVC,
+ 10-bit, DTS, TrueHD and multi-track audio all decode natively, so the
+ server does not transcode.

@@ -221,7 +221,7 @@
                 } catch (ex) {
                     // User declined retry
                     errorData.streamInfo = {
-                        // Prevent jellyfin-web retrying with transcode
+                        // Prevent the web client retrying with transcode
                         // which crashes the player
                         mediaSource: {
                             SupportsTranscoding: false

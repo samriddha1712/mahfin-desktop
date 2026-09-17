@@ -1,27 +1,33 @@
 Format: http://dep.debian.net/deps/dep5
-Upstream-Name: jellyfin
-Source: https://github.com/jellyfin/jellyfin-desktop
+Upstream-Name: mahfin-desktop
+Source: https://github.com/samriddha1712/mahfin-desktop
+
+Comment: Mahfin Desktop is a fork of Jellyfin Desktop
+ (https://github.com/jellyfin/jellyfin-desktop), which is itself derived from
+ Plex Media Player. The copyright holders below are carried over from those
+ projects and retain their rights in the code they wrote.
 
 Files: *
 Copyright: 2018 Izzie Walton
+           2015-2018 Plex, Inc.
+           2025 Samriddha
 License: GPL-2.0
 
 Files: debian/*
 Copyright: 2021 Joshua Boniface <joshua@boniface.me>
+           2025 Samriddha
 License: GPL-2.0
 
 License: GPL-2.0
- This package is free software; you can redistribute it and/or modify
+ This program is free software; you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
- the Free Software Foundation; version 2.
+ the Free Software Foundation; either version 2 of the License, or
+ (at your option) any later version.
  .
- This package is distributed in the hope that it will be useful,
+ This program is distributed in the hope that it will be useful,
  but WITHOUT ANY WARRANTY; without even the implied warranty of
  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  GNU General Public License for more details.
  .
- You should have received a copy of the GNU General Public License
- along with this program. If not, see <http://www.gnu.org/licenses/>
- .
- On Debian systems, the complete text of the GNU General
- Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 can be found in "/usr/share/common-licenses/GPL-2".

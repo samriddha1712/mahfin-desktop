@@ -88,7 +88,7 @@ static void preinitQt()
 {
   QCoreApplication::setApplicationName(Names::DataName());
   QCoreApplication::setApplicationVersion(Version::GetVersionString());
-  QCoreApplication::setOrganizationDomain("jellyfin.org");
+  QCoreApplication::setOrganizationDomain("mahfin.online");
 
 #ifdef Q_OS_WIN32
   // Qt 6 uses desktop OpenGL by default on Windows
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
   try
   {
     QCommandLineParser parser;
-    parser.setApplicationDescription("Jellyfin Desktop");
+    parser.setApplicationDescription("Mahfin Desktop");
     parser.addVersionOption();
     parser.addOptions({{{"h", "help"},              "Show this help"},
                        {{"l", "licenses"},          "Show license information"},
@@ -424,6 +424,26 @@ int main(int argc, char *argv[])
     // Disable QtWebEngine's automatic MPRIS registration - we handle it ourselves
     chromiumFlags << "--disable-features=MediaSessionService,HardwareMediaKeyHandling";
 #endif
+    // Tell Blink there is a mouse, because inside a QQuickWebEngineView it does
+    // not work that out for itself.
+    //
+    // Chromium reports `(pointer: fine)` and `(pointer: coarse)` as *both*
+    // false here — with no input device associated with the view it answers
+    // "no pointer at all". `(hover: hover)` is true, so the mismatch is easy to
+    // miss, and `matchMedia` is the only place it shows.
+    //
+    // It is not cosmetic. `@media (hover: hover) and (pointer: fine)` is the
+    // standard guard for hover styling — a touch browser matching `hover` alone
+    // would latch the hovered state on tap and never release it — and the web
+    // client puts every hover effect it has behind exactly that query. Without
+    // this the whole lot is silently dead in the window: cards do not lift,
+    // rows do not respond, and nothing anywhere reports an error.
+    //
+    // The numbers are Blink's own bitmasks from pointer_properties.h: pointer
+    // fine = 1<<2, hover = 1<<1.
+    chromiumFlags << "--blink-settings=availablePointerTypes=4,primaryPointerType=4,"
+                     "availableHoverTypes=2,primaryHoverType=2";
+
     // Disable pinch-to-zoom if browser zoom is not allowed
     QVariant allowZoom = SettingsComponent::readPreinitValue(SETTINGS_SECTION_MAIN, "allowBrowserZoom");
     if (allowZoom.isValid() && !allowZoom.toBool())
@@ -433,7 +453,19 @@ int main(int argc, char *argv[])
       chromiumFlags << "--ignore-certificate-errors";
 
     if (!chromiumFlags.isEmpty())
-      qputenv("QTWEBENGINE_CHROMIUM_FLAGS", chromiumFlags.join(" ").toUtf8());
+    {
+      // Whatever the user already put in the environment wins. Chromium takes
+      // the last occurrence of a repeated switch, so theirs goes on the end.
+      //
+      // This used to be a plain overwrite, which was harmless only while the
+      // list could be empty — it no longer can be, and silently discarding a
+      // GPU workaround somebody set by hand is a bad way to find that out.
+      QByteArray flags = chromiumFlags.join(" ").toUtf8();
+      const QByteArray existing = qgetenv("QTWEBENGINE_CHROMIUM_FLAGS");
+      if (!existing.isEmpty())
+        flags = flags + " " + existing;
+      qputenv("QTWEBENGINE_CHROMIUM_FLAGS", flags);
+    }
 
     if (parser.isSet("remote-debugging-port"))
       qputenv("QTWEBENGINE_REMOTE_DEBUGGING", parser.value("remote-debugging-port").toUtf8());
@@ -448,9 +480,9 @@ int main(int argc, char *argv[])
 
 #if defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)
   	// Set window icon on Linux using system icon theme
-  	app.setWindowIcon(QIcon::fromTheme("org.jellyfin.JellyfinDesktop", QIcon(":/images/icon.png")));
+  	app.setWindowIcon(QIcon::fromTheme("online.mahfin.Mahfin", QIcon(":/images/icon.png")));
     // Set app id for Wayland compositor window icon
-    app.setDesktopFileName("org.jellyfin.JellyfinDesktop");
+    app.setDesktopFileName("online.mahfin.Mahfin");
 #endif
 
     // Configure default WebEngineProfile paths early (profile is already set)

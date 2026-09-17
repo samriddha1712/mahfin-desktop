@@ -1,28 +1,28 @@
 [Desktop Entry]
 Version=1.0
-Name=Jellyfin Desktop
-Comment=Jellyfin desktop client
-Exec=jellyfin-desktop
-Icon=org.jellyfin.JellyfinDesktop
+Name=Mahfin Desktop
+Comment=Mahfin desktop client
+Exec=mahfin-desktop
+Icon=online.mahfin.Mahfin
 Terminal=false
 Type=Application
-StartupWMClass=org.jellyfin.JellyfinDesktop
+StartupWMClass=online.mahfin.Mahfin
 Categories=AudioVideo;Video;Player;TV;
 
 Actions=DesktopF;DesktopW;TVF;TVW
 
 [Desktop Action DesktopF]
 Name=Desktop [Fullscreen]
-Exec=jellyfin-desktop --fullscreen --desktop
+Exec=mahfin-desktop --fullscreen --desktop
 
 [Desktop Action DesktopW]
 Name=Desktop [Windowed]
-Exec=jellyfin-desktop --windowed --desktop
+Exec=mahfin-desktop --windowed --desktop
 
 [Desktop Action TVF]
 Name=TV [Fullscreen]
-Exec=jellyfin-desktop --fullscreen --tv
+Exec=mahfin-desktop --fullscreen --tv
 
 [Desktop Action TVW]
 Name=TV [Windowed]
-Exec=jellyfin-desktop --windowed --tv
+Exec=mahfin-desktop --windowed --tv

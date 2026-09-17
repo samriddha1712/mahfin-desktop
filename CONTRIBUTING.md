@@ -1,8 +1,8 @@
-# Contributing to Jellyfin Desktop
+# Contributing to Mahfin Desktop
 
 ## Running Tests
 
-Jellyfin Desktop uses Qt Test for unit testing.
+Mahfin Desktop uses Qt Test for unit testing.
 
 ### Building Tests
 

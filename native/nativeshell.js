@@ -167,7 +167,7 @@ function getDeviceProfile() {
     }
 
     return {
-        'Name': 'Jellyfin Desktop',
+        'Name': 'Mahfin Desktop',
         'MaxStaticBitrate': 1000000000,
         'MusicStreamingTranscodingBitrate': 1280000,
         'TimelineOffsetSeconds': 5,
@@ -298,7 +298,7 @@ window.initCompleted = new Promise(async (resolve) => {
         }
     );
 
-    // Sync cursor visibility with jellyfin-web's mouse idle state
+    // Sync cursor visibility with the web client's mouse idle state
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             if (mutation.attributeName === 'class') {
@@ -316,7 +316,7 @@ window.NativeShell.AppHost = {
     init() {
         return Promise.resolve({
             deviceName: jmpInfo.deviceName,
-            appName: "Jellyfin Desktop",
+            appName: "Mahfin Desktop",
             appVersion: jmpInfo.version
         });
     },
@@ -329,7 +329,7 @@ window.NativeShell.AppHost = {
     getDeviceProfile,
     getSyncProfile: getDeviceProfile,
     appName() {
-        return "Jellyfin Desktop";
+        return "Mahfin Desktop";
     },
     appVersion() {
         return jmpInfo.version;
@@ -345,7 +345,145 @@ window.NativeShell.AppHost = {
 async function showSettingsModal() {
     await initCompleted;
 
-    const tooltipCSS = `
+    /**
+     * The settings modal styles itself, because there is no longer a web client
+     * underneath it that would.
+     *
+     * This dialog was written for jellyfin-web and names its classes — `dialog`,
+     * `formDialogHeader`, `emby-select`, `material-icons` — expecting that
+     * client's stylesheet to be on the page. Mahfin has no such stylesheet and
+     * no icon font, so without this the modal renders as a column of unstyled
+     * controls spilling down the page: technically working, unusable in
+     * practice, and it is the only way to reach audio passthrough, hardware
+     * decoding and the HDR options.
+     *
+     * Written against Mahfin's palette rather than Jellyfin's so it does not
+     * look like a different application has opened on top.
+     */
+    const modalCSS = `
+        .jmp-settings-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 100000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(6px);
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        }
+
+        .jmp-settings-modal .dialog {
+            width: min(46rem, calc(100vw - 3rem));
+            max-height: calc(100vh - 4rem);
+            display: flex;
+            flex-direction: column;
+            background: #141418;
+            color: #f4f4f5;
+            border: 1px solid rgba(255, 255, 255, 0.09);
+            border-radius: 14px;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+            overflow: hidden;
+        }
+
+        .jmp-settings-modal .formDialogHeader {
+            padding: 1.1rem 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .jmp-settings-modal .formDialogHeaderTitle {
+            margin: 0;
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+        }
+
+        .jmp-settings-modal .formDialogContent {
+            padding: 1.25rem 1.5rem;
+            overflow-y: auto;
+            /* The original sets these inline for jellyfin-web's fixed footer,
+               which this layout does not have; it would leave 6em of dead space. */
+            margin-bottom: 0 !important;
+            padding-top: 1.25rem !important;
+        }
+
+        .jmp-settings-modal fieldset {
+            border: 0;
+            margin: 0 0 1.75rem;
+            padding: 0;
+        }
+
+        .jmp-settings-modal legend { padding: 0; width: 100%; }
+
+        .jmp-settings-modal legend h2 {
+            margin: 0 0 0.35rem;
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: #a5a5ad;
+        }
+
+        .jmp-settings-modal legend h4 {
+            margin: 0 0 0.9rem;
+            font-size: 0.8rem;
+            font-weight: 400;
+            line-height: 1.5;
+            color: #8b8b94;
+        }
+
+        .jmp-settings-modal .inputContainer {
+            margin-bottom: 1rem !important;
+            font-size: 0.9rem;
+        }
+
+        .jmp-settings-modal .inputLabel {
+            display: block;
+            margin-bottom: 0.35rem;
+            color: #c9c9d1;
+        }
+
+        .jmp-settings-modal select,
+        .jmp-settings-modal textarea {
+            width: 100%;
+            padding: 0.5rem 0.6rem;
+            background: #1e1e24;
+            color: #f4f4f5;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+
+        .jmp-settings-modal textarea { font-family: ui-monospace, Menlo, monospace; }
+
+        .jmp-settings-modal input[type="checkbox"] {
+            width: 1rem;
+            height: 1rem;
+            margin-right: 0.5rem;
+            vertical-align: -2px;
+            accent-color: #e0b33c;
+        }
+
+        .jmp-settings-modal button {
+            padding: 0.55rem 1.1rem;
+            background: #26262e;
+            color: #f4f4f5;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .jmp-settings-modal button:hover { background: #32323c; }
+
+        .jmp-settings-modal .formDialogFooter {
+            display: flex;
+            justify-content: flex-end;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
         .tooltip {
             position: relative;
             display: inline-block;
@@ -354,34 +492,61 @@ async function showSettingsModal() {
             vertical-align: sub;
         }
 
+        /* jellyfin-web ships the Material icon font and Mahfin does not, so the
+           help marker would otherwise be the literal text "help_outline". */
+        .jmp-settings-modal .material-icons {
+            font-size: 0 !important;
+            color: #8b8b94;
+            cursor: help;
+        }
+
+        .jmp-settings-modal .material-icons::before {
+            content: "?";
+            font-size: 12px;
+            font-weight: 700;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 15px;
+            height: 15px;
+            border: 1px solid currentColor;
+            border-radius: 50%;
+        }
+
         .tooltip .tooltip-text {
             visibility: hidden;
             width: max-content;
-            max-width: 40em;
-            background-color: black;
-            color: white;
+            max-width: 32em;
+            background-color: #0b0b0e;
+            color: #e8e8ee;
             text-align: left;
             position: absolute;
             z-index: 1;
             border-radius: 6px;
-            padding: 5px;
+            padding: 8px 10px;
             top: -4px;
             left: 25px;
-            border: solid 1px grey;
+            border: solid 1px rgba(255, 255, 255, 0.16);
             font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
         }
 
         .tooltip:hover .tooltip-text {
             visibility: visible;
         }`;
 
-    var style = document.createElement('style')
-    style.innerText = tooltipCSS
-    document.head.appendChild(style)
+    // Injected once. The original appended a fresh <style> on every open, so a
+    // session that visited settings a few times carried a copy for each.
+    if (!document.getElementById("jmp-settings-style")) {
+        const style = document.createElement("style");
+        style.id = "jmp-settings-style";
+        style.textContent = modalCSS;
+        document.head.appendChild(style);
+    }
 
     const modalContainer = document.createElement("div");
-    modalContainer.className = "dialogContainer";
-    modalContainer.style.backgroundColor = "rgba(0,0,0,0.5)";
+    modalContainer.className = "dialogContainer jmp-settings-modal";
     modalContainer.addEventListener("click", e => {
         if (e.target == modalContainer) {
             modalContainer.remove();
@@ -541,7 +706,7 @@ async function showSettingsModal() {
         const legendSubHeader = document.createElement("h4");
         legendSubHeader.textContent = (
             "The server you first connected to is your saved server. " +
-            "It provides the web client for Jellyfin in the absence of a bundled one. " +
+            "It provides the web client for Mahfin in the absence of a bundled one. " +
             "You can use this option to change it to another one. This does NOT log you off."
         );
         legend.appendChild(legendSubHeader);

@@ -1,5 +1,5 @@
 @echo off
-REM Jellyfin Desktop - Windows build script
+REM Mahfin Desktop - Windows build script
 REM Run setup.bat first to install dependencies
 
 setlocal enabledelayedexpansion

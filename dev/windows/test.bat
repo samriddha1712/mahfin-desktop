@@ -1,5 +1,5 @@
 @echo off
-REM Jellyfin Desktop - Run unit tests
+REM Mahfin Desktop - Run unit tests
 REM Run build.bat first
 
 setlocal

@@ -1,5 +1,5 @@
 @echo off
-REM Jellyfin Desktop - Run built executable
+REM Mahfin Desktop - Run built executable
 REM Run build.bat first
 
 setlocal

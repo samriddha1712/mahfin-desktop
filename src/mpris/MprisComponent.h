@@ -34,8 +34,8 @@ public:
   bool fullscreen() const;
   void setFullscreen(bool value);
   bool hasTrackList() const { return false; }
-  QString identity() const { return "Jellyfin Desktop"; }
-  QString desktopEntry() const { return "org.jellyfin.JellyfinDesktop"; }
+  QString identity() const { return "Mahfin Desktop"; }
+  QString desktopEntry() const { return "online.mahfin.Mahfin"; }
   QStringList supportedUriSchemes() const { return QStringList(); }
   QStringList supportedMimeTypes() const { return QStringList(); }
 
@@ -112,7 +112,7 @@ Q_SIGNALS:
 
 private:
   void updatePlaybackStatus(const QString& status);
-  void updateMetadata(const QVariantMap& jellyfinMeta);
+  void updateMetadata(const QVariantMap& mahfinMeta);
   void emitPropertyChange(const QString& interface, const QString& property, const QVariant& value);
   void emitMultiplePropertyChanges(const QString& interface, const QVariantMap& properties);
   void connectPlayerSignals();

@@ -60,7 +60,7 @@ bool MprisComponent::componentInitialize()
 
   // Generate profile-specific service name using cache dir basename (profile ID)
   QString profileCacheDir = ProfileManager::activeProfile().cacheDir();
-  m_serviceName = QString("org.mpris.MediaPlayer2.JellyfinDesktop.profile_%1").arg(QFileInfo(profileCacheDir).fileName());
+  m_serviceName = QString("org.mpris.MediaPlayer2.MahfinDesktop.profile_%1").arg(QFileInfo(profileCacheDir).fileName());
 
   qDebug() << "Attempting to register MPRIS service:" << m_serviceName;
   if (!QDBusConnection::sessionBus().registerService(m_serviceName))
@@ -750,7 +750,7 @@ void MprisComponent::onPlayerDurationChanged(qint64 duration)
 {
   qint64 mpvDuration = duration * 1000;
 
-  qDebug() << "MPRIS: MPV duration:" << mpvDuration << "Jellyfin duration:" << m_duration;
+  qDebug() << "MPRIS: MPV duration:" << mpvDuration << "Mahfin duration:" << m_duration;
 
   m_duration = mpvDuration;
 
@@ -831,27 +831,27 @@ void MprisComponent::updatePlaybackStatus(const QString& status)
   }
 }
 
-void MprisComponent::updateMetadata(const QVariantMap& jellyfinMeta)
+void MprisComponent::updateMetadata(const QVariantMap& mahfinMeta)
 {
   QVariantMap mprisMeta;
 
   m_currentTrackId = generateTrackId();
   mprisMeta["mpris:trackid"] = QVariant::fromValue(QDBusObjectPath(m_currentTrackId));
 
-  QString mediaType = jellyfinMeta.value("MediaType").toString();
-  QString itemType = jellyfinMeta.value("Type").toString();
+  QString mediaType = mahfinMeta.value("MediaType").toString();
+  QString itemType = mahfinMeta.value("Type").toString();
 
   m_currentMediaType = mediaType;
 
-  if (jellyfinMeta.contains("Name"))
-    mprisMeta["xesam:title"] = jellyfinMeta["Name"];
+  if (mahfinMeta.contains("Name"))
+    mprisMeta["xesam:title"] = mahfinMeta["Name"];
 
-  if (jellyfinMeta.contains("RunTimeTicks"))
+  if (mahfinMeta.contains("RunTimeTicks"))
   {
-    qint64 runTimeTicks = jellyfinMeta["RunTimeTicks"].toLongLong();
+    qint64 runTimeTicks = mahfinMeta["RunTimeTicks"].toLongLong();
     qint64 durationMicroseconds = runTimeTicks / 10;
     m_duration = durationMicroseconds;
-    qDebug() << "MPRIS: Got duration from Jellyfin metadata:" << m_duration << "us";
+    qDebug() << "MPRIS: Got duration from Mahfin metadata:" << m_duration << "us";
   }
 
   if (m_duration > 0)
@@ -859,49 +859,49 @@ void MprisComponent::updateMetadata(const QVariantMap& jellyfinMeta)
 
   if (mediaType == "Audio" || itemType == "Audio")
   {
-    if (jellyfinMeta.contains("Artists"))
+    if (mahfinMeta.contains("Artists"))
     {
-      QStringList artists = jellyfinMeta["Artists"].toStringList();
+      QStringList artists = mahfinMeta["Artists"].toStringList();
       if (!artists.isEmpty())
         mprisMeta["xesam:artist"] = QVariant::fromValue(artists);
     }
 
-    if (jellyfinMeta.contains("AlbumArtist"))
-      mprisMeta["xesam:albumArtist"] = QVariant::fromValue(QStringList{jellyfinMeta["AlbumArtist"].toString()});
+    if (mahfinMeta.contains("AlbumArtist"))
+      mprisMeta["xesam:albumArtist"] = QVariant::fromValue(QStringList{mahfinMeta["AlbumArtist"].toString()});
 
-    if (jellyfinMeta.contains("Album"))
-      mprisMeta["xesam:album"] = jellyfinMeta["Album"];
+    if (mahfinMeta.contains("Album"))
+      mprisMeta["xesam:album"] = mahfinMeta["Album"];
 
-    if (jellyfinMeta.contains("IndexNumber"))
-      mprisMeta["xesam:trackNumber"] = jellyfinMeta["IndexNumber"];
+    if (mahfinMeta.contains("IndexNumber"))
+      mprisMeta["xesam:trackNumber"] = mahfinMeta["IndexNumber"];
 
-    if (jellyfinMeta.contains("ProductionYear"))
-      mprisMeta["xesam:contentCreated"] = jellyfinMeta["ProductionYear"].toString();
+    if (mahfinMeta.contains("ProductionYear"))
+      mprisMeta["xesam:contentCreated"] = mahfinMeta["ProductionYear"].toString();
   }
   else if (itemType == "Episode")
   {
-    QString title = jellyfinMeta.value("Name").toString();
-    QString series = jellyfinMeta.value("SeriesName").toString();
-    int episode = jellyfinMeta.value("IndexNumber", 0).toInt();
+    QString title = mahfinMeta.value("Name").toString();
+    QString series = mahfinMeta.value("SeriesName").toString();
+    int episode = mahfinMeta.value("IndexNumber", 0).toInt();
 
     mprisMeta["xesam:title"] = title;
 
     if (!series.isEmpty())
       mprisMeta["xesam:artist"] = QVariant::fromValue(QStringList{series});
 
-    if (jellyfinMeta.contains("SeasonName"))
-      mprisMeta["xesam:album"] = jellyfinMeta["SeasonName"].toString();
+    if (mahfinMeta.contains("SeasonName"))
+      mprisMeta["xesam:album"] = mahfinMeta["SeasonName"].toString();
 
     if (episode > 0)
       mprisMeta["xesam:trackNumber"] = episode;
 
-    if (jellyfinMeta.contains("ProductionYear"))
-      mprisMeta["xesam:contentCreated"] = jellyfinMeta["ProductionYear"].toString();
+    if (mahfinMeta.contains("ProductionYear"))
+      mprisMeta["xesam:contentCreated"] = mahfinMeta["ProductionYear"].toString();
   }
   else if (itemType == "Movie")
   {
-    if (jellyfinMeta.contains("ProductionYear"))
-      mprisMeta["xesam:contentCreated"] = jellyfinMeta["ProductionYear"].toString();
+    if (mahfinMeta.contains("ProductionYear"))
+      mprisMeta["xesam:contentCreated"] = mahfinMeta["ProductionYear"].toString();
   }
 
   // Album art will be set asynchronously via onAlbumArtReady signal

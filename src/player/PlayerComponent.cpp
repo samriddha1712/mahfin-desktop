@@ -338,13 +338,13 @@ void PlayerComponent::queueMedia(const QString& url, const QVariantMap& options,
 
   m_mpv->command( command);
 
-  QVariantMap jellyfinMetadata = metadata["metadata"].toMap();
-  QUrl jellyfinBaseUrl = qurl.adjusted(QUrl::RemovePath | QUrl::RemoveQuery);
-  emit onMetaData(jellyfinMetadata, jellyfinBaseUrl);
+  QVariantMap mahfinMetadata = metadata["metadata"].toMap();
+  QUrl mahfinBaseUrl = qurl.adjusted(QUrl::RemovePath | QUrl::RemoveQuery);
+  emit onMetaData(mahfinMetadata, mahfinBaseUrl);
 
   // Request album art from the provider
   if (m_albumArtProvider)
-    m_albumArtProvider->requestArtwork(jellyfinMetadata, jellyfinBaseUrl);
+    m_albumArtProvider->requestArtwork(mahfinMetadata, mahfinBaseUrl);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -573,7 +573,7 @@ void PlayerComponent::handleMpvEvent(mpv_event *event)
       }
       else if (strcmp(prop->name, "demuxer-cache-state") == 0 && prop->format == MPV_FORMAT_NODE)
       {
-        constexpr double ticksPerSecond = 10000000.0; // 100ns ticks (Jellyfin's internal unit)
+        constexpr double ticksPerSecond = 10000000.0; // 100ns ticks (Mahfin's internal unit)
         auto *node = static_cast<mpv_node*>(prop->data);
         QVariantMap cacheState = mpv::qt::node_to_variant(node).toMap();
         QVariantList seekableRanges = cacheState[QStringLiteral("seekable-ranges")].toList();
@@ -978,13 +978,13 @@ void PlayerComponent::reselectStream(const QVariant &streamSelection, MediaType 
   QString streamSelectionStr = streamSelection.toString();
   bool isStringFormat = streamSelectionStr.startsWith("#") || !streamSelection.canConvert<int>();
 
-  // Handle integer Jellyfin stream index (new format)
+  // Handle integer Mahfin stream index (new format)
   if (!isStringFormat && streamSelection.canConvert<int>()) {
     int index = streamSelection.toInt();
     if (index < 0) {
       m_mpv->setProperty(streamIdPropertyName, "no");
     } else {
-      // Jellyfin stream index is the MPV track ID (already 1-based)
+      // Mahfin stream index is the MPV track ID (already 1-based)
       m_mpv->setProperty(streamIdPropertyName, index);
     }
     return;
@@ -1231,6 +1231,31 @@ void PlayerComponent::updateAudioConfiguration()
 void PlayerComponent::setAudioConfiguration()
 {
   QString deviceType = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "devicetype").toString();
+
+#ifdef Q_OS_MAC
+  // Prefer AVFoundation, so a multichannel file does not fail an audio output
+  // on its way to one that works.
+  //
+  // mpv tries coreaudio first on macOS. With a 5.1 track and a device that is
+  // physically stereo, that attempt fails — "unable to set the input channel
+  // layout on the audio unit", logged as critical — and mpv falls back to
+  // avfoundation, which opens the same 5.1 stream without complaint. So the
+  // coreaudio attempt is pure cost on this path.
+  //
+  // It may be more than cost. Three crashes here were the same null dereference
+  // inside libmpv, reached from a CoreAudio device-properties callback, and a
+  // half-initialised backend with a live listener is the shape that produces
+  // one. That is a guess about someone else's code and is not the reason for
+  // this change — skipping a step that reliably fails is reason enough — but it
+  // is why the order matters rather than just the outcome.
+  //
+  // coreaudio stays in the list as a fallback, and is left first when
+  // passthrough is configured, since bitstreaming needs it.
+  if (deviceType == AUDIO_DEVICE_TYPE_BASIC)
+    m_mpv->setProperty("ao", "avfoundation,coreaudio");
+  else
+    m_mpv->setProperty("ao", "");
+#endif
 
   m_mpv->setProperty( "audio-exclusive", SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "exclusive").toBool());
 

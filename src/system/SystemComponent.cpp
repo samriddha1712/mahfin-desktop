@@ -433,7 +433,7 @@ QString SystemComponent::getUserAgent()
   QString kernel = QSysInfo::kernelType();
   kernel[0] = kernel[0].toUpper();
   QString chromeVersion = QString(qWebEngineChromiumVersion()).split('.').first() + ".0.0.0";
-  QString userAgent = QString("JellyfinDesktop/%1 (%2; %3) Chrome/%4")
+  QString userAgent = QString("MahfinDesktop/%1 (%2; %3) Chrome/%4")
     .arg(Version::GetVersionString())
     .arg(kernel)
     .arg(getPlatformArchString())
@@ -447,7 +447,7 @@ QString SystemComponent::debugInformation()
   QString debugInfo;
   QTextStream stream(&debugInfo);
 
-  stream << "Jellyfin\n";
+  stream << "Mahfin\n";
   stream << "  Version: " << Version::GetVersionString() << " built: " << Version::GetBuildDate() << "\n";
   stream << "  Web Client Version: " << Version::GetWebVersion() << "\n";
   stream << "  Web Client URL: " << SettingsComponent::Get().value(SETTINGS_SECTION_PATH, "startupurl").toString() << "\n";
@@ -678,7 +678,7 @@ void SystemComponent::checkForUpdates()
   if (SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "checkForUpdates").toBool()) {
 #if !defined(Q_OS_WIN) && !defined(Q_OS_MAC)
     QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-    QString checkUrl = "https://github.com/jellyfin/jellyfin-desktop/releases/latest";
+    QString checkUrl = "https://github.com/samriddha1712/mahfin-desktop/releases/latest";
     QUrl qCheckUrl = QUrl(checkUrl);
     qDebug() << QString("Checking URL for updates: %1").arg(checkUrl);
     QNetworkRequest req(qCheckUrl);

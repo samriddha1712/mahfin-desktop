@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# Jellyfin Desktop - macOS bundling script
+# Mahfin Desktop - macOS bundling script
 # Run build.sh first
 set -eu
 
@@ -26,14 +26,14 @@ codesign --force --deep -s - "${APP_BUNDLE}"
 echo "Creating DMG..."
 VERSION="$(cat "${PROJECT_ROOT}/VERSION")"
 ARCH="$(uname -m)"
-DMG_NAME="JellyfinDesktop-${VERSION}-${ARCH}.dmg"
+DMG_NAME="MahfinDesktop-${VERSION}-${ARCH}.dmg"
 rm -f "${DMG_NAME}"
 create-dmg \
-    --volname "Jellyfin Desktop v${VERSION}" \
+    --volname "Mahfin Desktop v${VERSION}" \
     --no-internet-enable \
     --window-size 500 300 \
     --icon-size 100 \
-    --icon "Jellyfin Desktop.app" 125 150 \
+    --icon "Mahfin Desktop.app" 125 150 \
     --app-drop-link 375 150 \
     "${DMG_NAME}" "${APP_BUNDLE}"
 
