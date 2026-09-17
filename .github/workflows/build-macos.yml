@@ -4,8 +4,16 @@ on:
   workflow_call:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
+
+# One run per workflow per branch. A new push cancels the run it supersedes
+# rather than queueing behind it — without this, pushing three times meant three
+# full matrices competing for the same scarce macOS runners, and the newest
+# build (the one anyone actually wants) waited behind two obsolete ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,6 +33,7 @@ jobs:
     - name: Install Qt
       uses: jurplel/install-qt-action@v4
       with:
+        cache: true
         # using older version due to severe memory leak
         # https://qt-project.atlassian.net/browse/QTBUG-141377https://qt-project.atlassian.net/browse/QTBUG-141377
         #version: '6.10.1'
@@ -33,7 +42,6 @@ jobs:
         modules: 'qtwebengine qtwebchannel qtpositioning'
     - name: Install dependencies
       run: |
-        brew update
         brew install mpv
     - name: Release build
       run: |

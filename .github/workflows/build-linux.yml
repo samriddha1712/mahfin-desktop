@@ -3,6 +3,14 @@ name: build-linux
 on:
   workflow_call:
   workflow_dispatch:
+# One run per workflow per branch. A new push cancels the run it supersedes
+# rather than queueing behind it — without this, pushing three times meant three
+# full matrices competing for the same scarce macOS runners, and the newest
+# build (the one anyone actually wants) waited behind two obsolete ones.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-ubuntu:
     strategy:
