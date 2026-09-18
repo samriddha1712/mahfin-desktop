@@ -15,7 +15,7 @@ on:
 # full matrices competing for the same scarce macOS runners, and the newest
 # build (the one anyone actually wants) waited behind two obsolete ones.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: build-windows-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
