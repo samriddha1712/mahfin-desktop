@@ -170,6 +170,11 @@ int main(int argc, char *argv[])
     auto logLevelOption = QCommandLineOption("log-level", "Log level: debug, info, warn, error, fatal (default: error)");
     logLevelOption.setValueName("level");
 
+    auto gpuBackendOption = QCommandLineOption("gpu-backend",
+      "How QtWebEngine reaches the GPU: default, gl, d3d11, software.");
+    gpuBackendOption.setValueName("backend");
+    gpuBackendOption.setDefaultValue("default");
+
     auto profileOption = QCommandLineOption("profile", "Use specific profile for this session.");
     profileOption.setValueName("name");
 
@@ -189,6 +194,7 @@ int main(int argc, char *argv[])
     parser.addOption(platformOption);
     parser.addOption(configDirOption);
     parser.addOption(logLevelOption);
+    parser.addOption(gpuBackendOption);
     parser.addOption(profileOption);
     parser.addOption(setDefaultProfileOption);
     parser.addOption(listProfilesOption);
@@ -443,6 +449,46 @@ int main(int argc, char *argv[])
     // fine = 1<<2, hover = 1<<1.
     chromiumFlags << "--blink-settings=availablePointerTypes=4,primaryPointerType=4,"
                      "availableHoverTypes=2,primaryHoverType=2";
+
+    /*
+     * Which way Chromium reaches the GPU, and what to do when the default way
+     * is slow.
+     *
+     * The scene graph is pinned to desktop OpenGL and cannot move: mpvqt draws
+     * through a QQuickFramebufferObject, which has no other backend. Chromium
+     * reaches the GPU through ANGLE, which on Windows means Direct3D 11 by
+     * default. Two different GL implementations in one process cannot hand
+     * each other a texture, and when the sharing fails the page is read back
+     * to the CPU and uploaded again once per frame. That does not look like a
+     * graphics fault from the inside — it looks like the whole application
+     * being slow, at every window size, whatever is on screen.
+     *
+     * `--gpu-backend=gl` puts ANGLE on the same desktop OpenGL driver the
+     * scene graph already uses, so there is nothing to copy. It is not the
+     * default because it then rests on that driver being correct, and D3D11 is
+     * the path Chromium actually tests. It is here so that "is this what is
+     * slow?" costs one launch to answer instead of a rebuild, and so the
+     * answer can be reported from a machine nobody developing this owns.
+     *
+     * `--disable-gpu` was declared for years and never read; it means the same
+     * thing as `--gpu-backend=software` and is kept because it is the spelling
+     * Chromium itself uses.
+     */
+    const QString gpuBackend = parser.value("gpu-backend");
+    if (parser.isSet("disable-gpu") || gpuBackend == "software")
+    {
+      chromiumFlags << "--disable-gpu";
+    }
+    else if (gpuBackend == "gl" || gpuBackend == "d3d11")
+    {
+      chromiumFlags << "--use-angle=" + gpuBackend;
+    }
+    else if (gpuBackend != "default")
+    {
+      fprintf(stderr, "Error: unknown --gpu-backend '%s'. Use default, gl, d3d11 or software.\n",
+              qPrintable(gpuBackend));
+      return EXIT_FAILURE;
+    }
 
     // Disable pinch-to-zoom if browser zoom is not allowed
     QVariant allowZoom = SettingsComponent::readPreinitValue(SETTINGS_SECTION_MAIN, "allowBrowserZoom");

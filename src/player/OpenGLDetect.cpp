@@ -3,6 +3,8 @@
 #include <QSurfaceFormat>
 #include <QCoreApplication>
 #include <QOpenGLContext>
+#include <QOpenGLFunctions>
+#include <QOffscreenSurface>
 #include <QDebug>
 
 #include <mpv/client.h>
@@ -79,11 +81,63 @@ void detectOpenGLEarly()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+// Say which OpenGL implementation this machine actually handed us.
+//
+// The scene graph is pinned to OpenGL because mpvqt draws through a
+// QQuickFramebufferObject, so on Windows everything on screen — the video, the
+// page composited over it, the window itself — goes through whatever
+// opengl32.dll resolves to. Usually that is the graphics driver. It is not
+// always: with no vendor ICD registered Windows answers with its own software
+// implementation, and Qt has a Mesa build it falls back to as well. Either way
+// the application starts, renders correctly, and is unusably slow, with nothing
+// anywhere saying why.
+//
+// One line in the log settles it. "Intel", "NVIDIA", "AMD", "Apple" — hardware.
+// "GDI Generic", "llvmpipe", "Microsoft Basic Render Driver", "Software
+// Rasterizer" — a CPU is drawing every pixel, and no amount of tuning in this
+// application will fix that; the graphics driver is what needs installing.
+//
+// Its own context rather than the window's: this runs before any QQuickWindow
+// exists, and a throwaway offscreen context reports the same strings the real
+// one will get.
+static void logOpenGLImplementation()
+{
+  QOpenGLContext ctx;
+  if (!ctx.create())
+  {
+    qWarning() << "Could not create an OpenGL context to identify the driver";
+    return;
+  }
+
+  QOffscreenSurface surface;
+  surface.setFormat(ctx.format());
+  surface.create();
+  if (!surface.isValid() || !ctx.makeCurrent(&surface))
+  {
+    qWarning() << "Could not make an OpenGL context current to identify the driver";
+    return;
+  }
+
+  QOpenGLFunctions* gl = ctx.functions();
+  const auto str = [gl](GLenum name) {
+    const GLubyte* value = gl->glGetString(name);
+    return value ? QString::fromLatin1(reinterpret_cast<const char*>(value)) : QStringLiteral("(unknown)");
+  };
+
+  qInfo() << "OpenGL vendor:" << str(GL_VENDOR);
+  qInfo() << "OpenGL renderer:" << str(GL_RENDERER);
+  qInfo() << "OpenGL version:" << str(GL_VERSION);
+
+  ctx.doneCurrent();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 void detectOpenGLLate()
 {
   // Qt 6 does not support AA_UseOpenGLES - it uses desktop OpenGL by default
   // No need to force GLES version, let Qt use the native OpenGL
   qInfo() << "Using native desktop OpenGL (Qt 6)";
+  logOpenGLImplementation();
 }
 
 #else

@@ -2,7 +2,10 @@
 REM Mahfin Desktop - Common variables
 REM Sourced by other scripts
 
-set QT_VERSION=6.10.1
+REM Pinned to match .github/workflows/build-windows.yml. 6.10.x leaks memory
+REM badly (QTBUG-141377), which is why every workflow asks for 6.9.3; a dev
+REM build on a different Qt is not the build anyone is given.
+set QT_VERSION=6.9.3
 set MPV_RELEASE=20260223
 set MPV_VERSION=20260223-git-f439c7f
 set SCRIPT_DIR=%~dp0

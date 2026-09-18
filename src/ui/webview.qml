@@ -231,9 +231,26 @@ Window
     z: 100
     backgroundColor: "transparent"
 
-    // this is needed to prevent intermittent(?) black screens when unminizing
-    // or resumsing from suspend (linux/{x11/wayland}, possibly others).
-    layer.enabled: true
+    /*
+     * Render into an offscreen layer, on the platform that needs it and no
+     * other.
+     *
+     * Upstream added this to stop intermittent black windows on un-minimise
+     * and resume from suspend, which is an X11/Wayland compositor problem, and
+     * applied it everywhere. It is not free: a layer makes Qt Quick draw this
+     * item into a full-window texture and then draw that texture, so every
+     * frame of an ordinary, still page costs an extra screen-sized render pass
+     * and the memory to hold it — on top of the mpv item underneath and the
+     * final composite. On a machine with a capable GPU that is invisible. On
+     * the integrated graphics most Windows laptops have, at the window sizes
+     * people actually use, it is the difference between the interface feeling
+     * immediate and feeling like treacle.
+     *
+     * So it stays on Linux, where it fixes something, and comes off Windows
+     * and macOS, where it only costs. If the black window ever appears there,
+     * this is the first line to put back.
+     */
+    layer.enabled: components.system.isLinux || components.system.isFreeBSD
 
     webChannel: webChannelObject
     settings.errorPageEnabled: false
