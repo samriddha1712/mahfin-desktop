@@ -27,14 +27,21 @@ echo "Creating DMG..."
 VERSION="$(cat "${PROJECT_ROOT}/VERSION")"
 ARCH="$(uname -m)"
 DMG_NAME="MahfinDesktop-${VERSION}-${ARCH}.dmg"
+# Shown by the Finder before the disk image mounts, and the only place the
+# Gatekeeper steps can be put where somebody installing this is certain to
+# see them: the app is ad-hoc signed, so the first launch is refused and the
+# way out of that is four steps deep in System Settings.
+EULA_FILE="${PROJECT_ROOT}/bundle/osx/first-launch.txt"
 rm -f "${DMG_NAME}"
 create-dmg \
     --volname "Mahfin Desktop v${VERSION}" \
     --no-internet-enable \
-    --window-size 500 300 \
+    --eula "${EULA_FILE}" \
+    --background "${PROJECT_ROOT}/bundle/osx/dmg-background.tiff" \
+    --window-size 700 520 \
     --icon-size 100 \
-    --icon "Mahfin Desktop.app" 125 150 \
-    --app-drop-link 375 150 \
+    --icon "Mahfin Desktop.app" 170 195 \
+    --app-drop-link 530 195 \
     "${DMG_NAME}" "${APP_BUNDLE}"
 
 echo ""

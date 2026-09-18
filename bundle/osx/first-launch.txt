@@ -1,0 +1,37 @@
+OPENING MAHFIN DESKTOP FOR THE FIRST TIME
+
+macOS will refuse to open this app the first time, and the message it
+gives does not tell you how to get past it. Here is how.
+
+1. In the window that opens next, drag Mahfin Desktop onto the
+   Applications folder.
+
+2. Open it from Applications. macOS will say Mahfin Desktop "cannot be
+   opened because Apple cannot check it for malicious software", and
+   offer you Move to Trash or Done. Click DONE. Do not move it to the
+   trash.
+
+3. Go to the Apple menu > System Settings > Privacy & Security and
+   scroll down to the Security section. There will be a line saying
+   Mahfin Desktop was blocked, with an OPEN ANYWAY button next to it.
+   Click it and enter your Mac password. Do this within an hour of
+   step 2, or the line disappears and you have to try opening the app
+   again to bring it back.
+
+4. Open Mahfin Desktop once more. This time the dialog has an OPEN
+   ANYWAY button. Click it.
+
+That is the last you will see of it for this version. Every launch
+after this one opens straight away.
+
+WHY THIS HAPPENS
+
+Apple only waives the check for apps signed with a paid Apple Developer
+account. Mahfin Desktop is not, so macOS treats it the same as anything
+else it has not seen before. It is the same app either way; the only
+difference is whether Apple has been paid to vouch for it.
+
+A version you download later is a new file as far as macOS is
+concerned, so it will ask once more. Same four steps.
+
+Click Agree to continue.
