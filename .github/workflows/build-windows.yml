@@ -9,9 +9,6 @@ env:
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    tags:
-      - 'v*'
 
 # One run per workflow per branch. A new push cancels the run it supersedes
 # rather than queueing behind it — without this, pushing three times meant three

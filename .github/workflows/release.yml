@@ -1,0 +1,65 @@
+name: release
+
+# Builds every installer and publishes them to a GitHub release.
+#
+# The per-platform workflows only ever uploaded artifacts, which are zipped and
+# behind a login — fine for checking a build, useless for giving somebody the
+# app. This is the one entry point for a tag: it runs the same reusable
+# workflows and then attaches what they produced to a release anyone can
+# download.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+
+  appimage:
+    uses: ./.github/workflows/build-appimage.yml
+
+  publish:
+    name: Publish
+    needs:
+      - macos
+      - windows
+      - appimage
+    # Only a tag names a release. A manual run is for checking that every
+    # platform still builds, and stops here.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Collect every installer
+        uses: actions/download-artifact@v8
+        with:
+          # The reusable workflows upload into this run, so their artifacts are
+          # here without having to go looking for another one.
+          path: installers
+          merge-multiple: true
+      - name: List what will be published
+        run: ls -la installers/
+      - name: Publish release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: installers/*
+          generate_release_notes: true
+          body: |
+            Download the one for your machine and open it.
+
+            - **macOS** — `MahfinDesktop-*.dmg`. Apple has not notarised it, so
+              the first launch needs right-click → Open rather than a
+              double-click, once.
+            - **Windows** — `MahfinDesktop-*.exe` to install, or the `.zip` to
+              run without installing.
+            - **Linux** — `MahfinDesktop-*.AppImage`. `chmod +x` it and run it.
+
+            The app connects to Mahfin and plays through mpv, which direct-plays
+            the library rather than asking the server to transcode it.
