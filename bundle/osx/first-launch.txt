@@ -1,28 +1,50 @@
 OPENING MAHFIN DESKTOP FOR THE FIRST TIME
 
-macOS will refuse to open this app the first time, and the message it
-gives does not tell you how to get past it. Here is how.
+macOS will refuse to open this app, and the message it gives does not
+say how to get past it. On some Macs it refuses without any useful
+message at all, or claims the app is damaged. It is not damaged.
+
+Here is the way through. The first one always works.
+
+THE ONE-LINE WAY
 
 1. In the window that opens next, drag Mahfin Desktop onto the
    Applications folder.
 
-2. Open it from Applications. macOS will say Mahfin Desktop "cannot be
-   opened because Apple cannot check it for malicious software", and
-   offer you Move to Trash or Done. Click DONE. Do not move it to the
-   trash.
+2. Open Terminal (press Command-Space, type Terminal, press Return),
+   then paste this line exactly and press Return:
 
-3. Go to the Apple menu > System Settings > Privacy & Security and
+       sudo xattr -cr "/Applications/Mahfin Desktop.app"
+
+   It asks for your Mac password. Nothing appears on screen as you
+   type it -- that is normal, not a stuck keyboard. Press Return.
+
+3. Open Mahfin Desktop from Applications. It opens.
+
+All that command does is remove the "downloaded from the internet"
+mark macOS attaches to the app. It changes nothing inside the app, and
+you do it once per version.
+
+WITHOUT USING TERMINAL
+
+This route works on most Macs but not all: if macOS told you the app
+was damaged, there is no Open Anyway button to find and you need the
+command above instead.
+
+1. Drag the app onto Applications and open it from there. macOS will
+   say Mahfin Desktop "cannot be opened because Apple cannot check it
+   for malicious software", and offer Move to Trash or Done. Click
+   DONE. Do not move it to the trash.
+
+2. Go to the Apple menu > System Settings > Privacy & Security and
    scroll down to the Security section. There will be a line saying
    Mahfin Desktop was blocked, with an OPEN ANYWAY button next to it.
    Click it and enter your Mac password. Do this within an hour of
-   step 2, or the line disappears and you have to try opening the app
+   step 1, or the line disappears and you have to try opening the app
    again to bring it back.
 
-4. Open Mahfin Desktop once more. This time the dialog has an OPEN
+3. Open Mahfin Desktop once more. This time the dialog has an OPEN
    ANYWAY button. Click it.
-
-That is the last you will see of it for this version. Every launch
-after this one opens straight away.
 
 WHY THIS HAPPENS
 
@@ -32,6 +54,6 @@ else it has not seen before. It is the same app either way; the only
 difference is whether Apple has been paid to vouch for it.
 
 A version you download later is a new file as far as macOS is
-concerned, so it will ask once more. Same four steps.
+concerned, so it will ask once more.
 
 Click Agree to continue.
