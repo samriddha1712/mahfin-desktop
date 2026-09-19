@@ -22,10 +22,10 @@ APP_BUNDLE="${BUILD_DIR}/output/${APP_NAME}"
 
 echo "Signing app bundle..."
 # Inside out, and not with --deep. See the same block in
-# .github/workflows/build-macos.yml for why: --deep does not treat the nested
-# QtWebEngineProcess.app as a bundle of its own, and the resulting seal makes
-# macOS call the app damaged -- which, unlike an unsigned app, offers no Open
-# Anyway button to get past.
+# .github/workflows/build-macos.yml for why: --deep is deprecated for signing
+# and does not treat the nested QtWebEngineProcess.app as a bundle of its own.
+# Hygiene, plus a check that the seal is valid -- neither of which is what
+# decides whether Gatekeeper lets the app open.
 find "${APP_BUNDLE}/Contents" -type f \( -name '*.dylib' -o -name '*.so' \) -exec codesign --force -s - {} +
 find "${APP_BUNDLE}/Contents" -type d -name '*.app' -exec codesign --force -s - {} +
 find "${APP_BUNDLE}/Contents" -type d -name '*.framework' -exec codesign --force -s - {} +

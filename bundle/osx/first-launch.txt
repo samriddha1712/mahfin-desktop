@@ -1,10 +1,11 @@
 OPENING MAHFIN DESKTOP FOR THE FIRST TIME
 
-macOS will refuse to open this app, and the message it gives does not
-say how to get past it. On some Macs it refuses without any useful
-message at all, or claims the app is damaged. It is not damaged.
+macOS will refuse to open this app the first time, and the message it
+gives does not say how to get past it. What happens after that depends
+on which version of macOS you are running: on older ones there is a
+button to click, and on the newest ones there is no button at all.
 
-Here is the way through. The first one always works.
+Here is the way through. The first one works on every Mac.
 
 THE ONE-LINE WAY
 
@@ -27,9 +28,11 @@ you do it once per version.
 
 WITHOUT USING TERMINAL
 
-This route works on most Macs but not all: if macOS told you the app
-was damaged, there is no Open Anyway button to find and you need the
-command above instead.
+This route works on older versions of macOS. On recent ones the line
+about Mahfin Desktop never appears in Privacy & Security at all, so
+there is nothing here to click and you need the command above instead.
+If you get to step 2 and find nothing, that is what has happened -- it
+is not you missing it.
 
 1. Drag the app onto Applications and open it from there. macOS will
    say Mahfin Desktop "cannot be opened because Apple cannot check it

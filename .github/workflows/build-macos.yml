@@ -56,15 +56,16 @@ jobs:
 
         # Sign from the inside out, and not with --deep.
         #
-        # --deep is deprecated by Apple for signing and does not treat a nested
-        # .app as a bundle in its own right -- and this one carries
-        # QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app. A seal that
-        # does not cover a nested helper properly is worse than no signature at
-        # all: macOS reports the app as damaged, and that is a dead end, because
-        # the Open Anyway button the instructions describe is never offered for
-        # a damaged app. The only way out is stripping the quarantine flag by
-        # hand, which is a lot to ask of somebody who just downloaded a disk
-        # image.
+        # This is hygiene, not the cure for a Mac refusing to open the app.
+        # That refusal is Gatekeeper declining an ad-hoc signature it cannot
+        # trace to a developer account, and no amount of correct ad-hoc signing
+        # changes it -- only notarisation does.
+        #
+        # --deep is nonetheless deprecated by Apple for signing, and does not
+        # treat a nested .app as a bundle in its own right -- and this one
+        # carries QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app. It
+        # has been producing something macOS accepts, but nothing here checked
+        # that, so there was no way to learn if it ever stopped.
         #
         # Order matters: anything that contains other code has to be signed
         # after the code it contains, or sealing the container invalidates what
@@ -75,8 +76,8 @@ jobs:
         codesign --force -s - "$APP"
 
         # Fail the build rather than publish a disk image nobody can open.
-        # Nothing checked this before, so a broken seal reached somebody's
-        # Applications folder before anyone found out it was broken.
+        # Nothing checked this before, so the first sign of a bad seal would
+        # have been somebody unable to open the app.
         codesign --verify --deep --strict --verbose=2 "$APP"
 
         brew install create-dmg
