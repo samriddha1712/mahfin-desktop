@@ -21,7 +21,18 @@ ninja install
 APP_BUNDLE="${BUILD_DIR}/output/${APP_NAME}"
 
 echo "Signing app bundle..."
-codesign --force --deep -s - "${APP_BUNDLE}"
+# Inside out, and not with --deep. See the same block in
+# .github/workflows/build-macos.yml for why: --deep does not treat the nested
+# QtWebEngineProcess.app as a bundle of its own, and the resulting seal makes
+# macOS call the app damaged -- which, unlike an unsigned app, offers no Open
+# Anyway button to get past.
+find "${APP_BUNDLE}/Contents" -type f \( -name '*.dylib' -o -name '*.so' \) -exec codesign --force -s - {} +
+find "${APP_BUNDLE}/Contents" -type d -name '*.app' -exec codesign --force -s - {} +
+find "${APP_BUNDLE}/Contents" -type d -name '*.framework' -exec codesign --force -s - {} +
+codesign --force -s - "${APP_BUNDLE}"
+
+echo "Verifying signature..."
+codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
 
 echo "Creating DMG..."
 VERSION="$(cat "${PROJECT_ROOT}/VERSION")"

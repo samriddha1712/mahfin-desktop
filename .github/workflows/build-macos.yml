@@ -52,9 +52,48 @@ jobs:
         cmake --build build --target install
     - name: Sign and create dmg
       run: |
-        codesign --force --deep -s - "./build/output/Mahfin Desktop.app/"
+        APP="./build/output/Mahfin Desktop.app"
+
+        # Sign from the inside out, and not with --deep.
+        #
+        # --deep is deprecated by Apple for signing and does not treat a nested
+        # .app as a bundle in its own right -- and this one carries
+        # QtWebEngineCore.framework/Helpers/QtWebEngineProcess.app. A seal that
+        # does not cover a nested helper properly is worse than no signature at
+        # all: macOS reports the app as damaged, and that is a dead end, because
+        # the Open Anyway button the instructions describe is never offered for
+        # a damaged app. The only way out is stripping the quarantine flag by
+        # hand, which is a lot to ask of somebody who just downloaded a disk
+        # image.
+        #
+        # Order matters: anything that contains other code has to be signed
+        # after the code it contains, or sealing the container invalidates what
+        # is inside it.
+        find "$APP/Contents" -type f \( -name '*.dylib' -o -name '*.so' \) -exec codesign --force -s - {} +
+        find "$APP/Contents" -type d -name '*.app' -exec codesign --force -s - {} +
+        find "$APP/Contents" -type d -name '*.framework' -exec codesign --force -s - {} +
+        codesign --force -s - "$APP"
+
+        # Fail the build rather than publish a disk image nobody can open.
+        # Nothing checked this before, so a broken seal reached somebody's
+        # Applications folder before anyone found out it was broken.
+        codesign --verify --deep --strict --verbose=2 "$APP"
+
         brew install create-dmg
+        # The tag that cut the release names the file, with the VERSION file as
+        # the fallback for a branch build -- the same rule VersionConfiguration
+        # .cmake applies to the app itself. The dmg was the last artifact still
+        # named from the file alone, so it could drift from the tag again even
+        # after the app stopped doing so.
         VERSION=$(cat VERSION)
+        if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+          TAG_VERSION=$(printf '%s' "$GITHUB_REF_NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [ -n "$TAG_VERSION" ]; then
+            VERSION="$TAG_VERSION"
+          else
+            echo "::warning::Tag '$GITHUB_REF_NAME' carries no version number; naming the dmg $VERSION from the VERSION file"
+          fi
+        fi
         ARCH=$(uname -m)
         DMG_NAME="MahfinDesktop-${VERSION}-${ARCH}.dmg"
         # --eula is the only thing the Finder shows on its own when a disk
