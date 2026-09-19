@@ -45,6 +45,11 @@ public:
   Q_INVOKABLE bool isFullScreen() const;
 
   // Cursor visibility
+  //
+  // Asked for by the page, which is the only thing that knows whether its own
+  // controls are showing. The shell only carries it out -- and, in
+  // applyCursorVisibility(), refuses to carry it out while the window is not
+  // the one being used.
   Q_INVOKABLE void setCursorVisibility(bool visible);
 
   // Event filter for cursor enter/leave tracking
@@ -104,13 +109,20 @@ private:
 
   void enforceZoom();
 
+  void applyCursorVisibility();
+
   QQuickWindow* m_window;
   QQuickItem* m_webView;
   bool m_enforcingZoom;
   QString m_currentScreenName;
   int m_ignoreFullscreenSettingsChange;
+  // What the page last asked for, kept apart from what is currently applied.
+  // The two differ whenever the window is not active: the request stands, the
+  // pointer is back, and it goes again when the window is.
+  bool m_cursorHideRequested;
   bool m_cursorVisible;
   bool m_cursorInsideWindow;
+  bool m_windowActive;
 
   // Window state
   QWindow::Visibility m_previousVisibility;  // State before fullscreen

@@ -34,8 +34,10 @@ WindowManager::WindowManager(QObject* parent)
     m_webView(nullptr),
     m_enforcingZoom(false),
     m_ignoreFullscreenSettingsChange(0),
+    m_cursorHideRequested(false),
     m_cursorVisible(true),
     m_cursorInsideWindow(true),
+    m_windowActive(true),
     m_previousVisibility(QWindow::Windowed),
     m_geometrySaveTimer(nullptr),
     m_initialSize(),
@@ -72,6 +74,27 @@ void WindowManager::initializeWindow(QQuickWindow* window)
 
   // Install event filter to track cursor enter/leave
   m_window->installEventFilter(this);
+
+  /*
+   * A hidden pointer must never outlive the window that asked for it.
+   *
+   * Hiding is requested by the page, and the page is the only thing that would
+   * ever ask for it back. That is fine right up until the page cannot: a
+   * reload, a navigation, a renderer that died, or simply the person alt-
+   * tabbing to something else while a film plays. The override cursor is set on
+   * the application, so any of those would leave somebody with no pointer and
+   * nothing on screen to explain why.
+   *
+   * Tying it to window activation removes that whole class of problem without
+   * the page having to be well behaved. Focus leaves, the pointer comes back;
+   * focus returns and the request still stands, so it goes away again.
+   */
+  connect(m_window, &QWindow::activeChanged, this, [this]()
+  {
+    m_windowActive = m_window && m_window->isActive();
+    applyCursorVisibility();
+  });
+  m_windowActive = m_window->isActive();
 
   // Register host command for fullscreen toggle
   InputComponent::Get().registerHostCommand("fullscreen", this, "toggleFullscreen");
@@ -259,6 +282,25 @@ void WindowManager::toggleFullscreen()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowManager::setCursorVisibility(bool visible)
 {
+  m_cursorHideRequested = !visible;
+  applyCursorVisibility();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+/*
+ * Reconciles what the page asked for with what is safe to do about it.
+ *
+ * Kept apart from setCursorVisibility() because there are two inputs and only
+ * one of them is the page's. Window activation is the other, and it can change
+ * without the page being told, so the decision has to be re-made from both
+ * rather than recorded once when the request arrives.
+ */
+void WindowManager::applyCursorVisibility()
+{
+  // Never hidden while this window is not the one in use: the pointer is then
+  // over somebody else's application, or our own dialog, and it has to be there.
+  const bool visible = !(m_cursorHideRequested && m_windowActive);
+
   if (visible == m_cursorVisible)
     return;
 
