@@ -176,6 +176,17 @@
         "default": true
       },
       {
+        "value": "graphicsMode",
+        "display_name": "Graphics",
+        "help": "How much work the interface is allowed to ask the graphics card for.\n\n- Auto: check the display driver at startup and turn the expensive effects off when there is no hardware acceleration behind it. This is the right answer on almost every machine.\n- Hardware: keep every effect on regardless. Use this if Auto is being too cautious about your machine.\n- Software: assume there is no usable graphics driver and run at the lowest settings. Use this if the window is unusably slow, or the whole computer stalls while Mahfin is open.\n\nChanging this requires an application restart.",
+        "default": "auto",
+        "possible_values": [
+          [ "auto", "Auto" ],
+          [ "hardware", "Hardware" ],
+          [ "software", "Software" ]
+        ]
+      },
+      {
         "value": "allowBrowserZoom",
         "display_name": "Allow Browser Zoom",
         "help": "Allows zooming the web interface using Ctrl+Plus/Minus, Ctrl+Scroll, or pinch-to-zoom. Changing this setting requires an application restart for pinch-to-zoom.",

@@ -28,6 +28,12 @@ public:
   Q_PROPERTY(bool isLinux READ platformIsLinux CONSTANT)
   Q_PROPERTY(bool isFreeBSD READ platformIsFreeBSD CONSTANT)
   Q_PROPERTY(qreal scale MEMBER m_scale CONSTANT)
+  /*
+   * True when nothing is accelerating the drawing, so QML can leave out the
+   * parts of itself that only look good when something is. Decided once at
+   * start-up by GraphicsCapability, hence CONSTANT.
+   */
+  Q_PROPERTY(bool lowGraphics READ lowGraphics CONSTANT)
 
   bool componentExport() override { return true; }
   const char* componentName() override { return "system"; }
@@ -126,6 +132,7 @@ private:
   bool platformIsMac() const { return m_platformType == platformTypeOsx; }
   bool platformIsLinux() const { return m_platformType == platformTypeLinux; }
   bool platformIsFreeBSD() const { return m_platformType == platformTypeFreeBSD; }
+  bool lowGraphics() const;
 
   void setReplyTimeout(QNetworkReply* reply, int ms);
 

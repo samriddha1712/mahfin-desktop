@@ -25,6 +25,28 @@ Window
   property string videoInfo: ""
   property string webUrl: ""
 
+  /*
+   * The window is not empty while the library is on its way.
+   *
+   * `webUrl` is a remote address, and the WebEngineView renders nothing at all
+   * until the document it points at has come back, parsed and painted a first
+   * frame. Until then this window is its own background colour and nothing
+   * else — on a cold start, over a slow connection, or on a machine drawing
+   * without a GPU, that is several seconds of a black rectangle with the title
+   * bar of an application that looks like it has hung. It was the first thing
+   * anyone saw of Mahfin, and what it said was "this is broken".
+   *
+   * So the splash is drawn *here*, in QML, by the scene graph that is already
+   * running before the web engine has been asked for anything. It is up in the
+   * first frame the window ever draws, it says what is happening, and it hands
+   * over to the page underneath once that page has something to show.
+   *
+   * Deliberately not an HTML splash: an HTML one cannot appear until the very
+   * document whose arrival it exists to cover has already arrived.
+   */
+  property bool splashVisible: true
+  property string splashStatus: qsTr("Starting Mahfin")
+
   property bool showSystemTrayIcon: webDesktopMode && components.system.isWindows &&
                                     components.settings.windowsTrayIcon
 
@@ -305,6 +327,12 @@ Window
       {
         console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
 
+        // Only for the very first document. Every later navigation happens
+        // inside a library the viewer is already looking at, and throwing a
+        // full-window cover over that would be a regression, not a splash.
+        if (mainWindow.splashVisible)
+          mainWindow.splashStatus = qsTr("Connecting to your library")
+
         // Stop playback whenever the document is replaced.
         //
         // mpv lives out here, not in the page, so it does not go away with it.
@@ -322,10 +350,22 @@ Window
       else if (loadingInfo.status == WebEngineView.LoadSucceededStatus)
       {
         console.log("WebEngineLoadRequest success: " + loadingInfo.url);
+
+        // Loaded is not the same as painted: the document has arrived and the
+        // first frame of it has not necessarily been composited yet. Lifting
+        // the cover on this signal alone shows a flash of the web view's own
+        // background between the two. One short beat is enough, and it is the
+        // same reasoning the original comment above records.
+        if (mainWindow.splashVisible)
+          splashHandoff.start()
       }
       else if (loadingInfo.status == WebEngineView.LoadFailedStatus)
       {
         console.log("WebEngineLoadRequest failure: " + loadingInfo.url + " error code: " + loadingInfo.errorCode);
+
+        // Out of the way, or the cover hides the only explanation there is.
+        splashHandoff.stop()
+        mainWindow.splashVisible = false
         errorLabel.visible = true
         errorLabel.text = "Error loading client, this is bad and should not happen<br>" +
                           "You can try to <a href='reload'>reload</a> or head to our <a href='http://mahfin.online'>support page</a><br><br>Actual Error: <pre>" +
@@ -362,6 +402,127 @@ Window
         error.acceptCertificate()
       }
     }
+  }
+
+  /*
+   * The start-up cover.
+   *
+   * Above the web view rather than below it, because the web view is opaque
+   * from the moment it exists and "underneath" would mean invisible. It fades
+   * out instead of disappearing, which is the difference between the page
+   * arriving and the page being snapped into place.
+   *
+   * Everything here is cheap on purpose: solid fills, one image, no blur, no
+   * drop shadow, and on a machine with no GPU not even the pulse — this is the
+   * cover for a slow machine, and a cover that is itself expensive to draw is
+   * a cover that makes the thing it is covering slower.
+   */
+  Rectangle
+  {
+    id: splash
+    objectName: "splash"
+    z: 200
+    anchors.fill: parent
+    color: "#07070b"
+    visible: opacity > 0
+    opacity: mainWindow.splashVisible ? 1 : 0
+
+    Behavior on opacity
+    {
+      NumberAnimation { duration: 420; easing.type: Easing.OutCubic }
+    }
+
+    // Swallow clicks so nothing reaches the page while it is still loading.
+    MouseArea { anchors.fill: parent }
+
+    Column
+    {
+      anchors.centerIn: parent
+      spacing: 28
+
+      Image
+      {
+        id: splashMark
+        source: "qrc:/images/icon.png"
+        // Bounded rather than proportional: a mark that grows with the window
+        // is a mark that is enormous on a television.
+        width: Math.max(96, Math.min(160, mainWindow.width * 0.12))
+        height: width
+        anchors.horizontalCenter: parent.horizontalCenter
+        smooth: true
+        mipmap: true
+        // Decoded at the size it is drawn at, so a 236KB source does not
+        // become a full-resolution texture on a machine short of memory.
+        sourceSize.width: 160
+        sourceSize.height: 160
+
+        // A slow breath, so the window is visibly alive rather than frozen —
+        // which is the exact thing being disproved here. Off entirely when a
+        // CPU is doing the drawing: it would be a permanent full-window
+        // repaint on the machine that can least afford one.
+        SequentialAnimation on opacity
+        {
+          running: mainWindow.splashVisible && !components.system.lowGraphics
+          loops: Animation.Infinite
+          NumberAnimation { to: 0.55; duration: 1100; easing.type: Easing.InOutSine }
+          NumberAnimation { to: 1.0;  duration: 1100; easing.type: Easing.InOutSine }
+        }
+      }
+
+      Text
+      {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: mainWindow.splashStatus
+        color: "#8b8b9a"
+        font.pixelSize: 15
+        horizontalAlignment: Text.AlignHCenter
+      }
+    }
+
+    /*
+     * A door out, for the case this cover is wrong.
+     *
+     * If the page never loads and never reports a failure — a server that
+     * accepts the connection and then says nothing is the usual way — the
+     * fade-out below is never reached and this would sit on screen forever,
+     * hiding an error nobody can now see. After fifteen seconds it says so and
+     * offers the one thing that helps.
+     */
+    Text
+    {
+      id: splashStuck
+      anchors.horizontalCenter: parent.horizontalCenter
+      anchors.top: parent.verticalCenter
+      anchors.topMargin: 140
+      visible: false
+      color: "#6f6f7d"
+      linkColor: "#a85dc3"
+      font.pixelSize: 13
+      textFormat: Text.StyledText
+      horizontalAlignment: Text.AlignHCenter
+      text: qsTr("This is taking longer than it should. <a href='reload'>Try again</a>")
+      onLinkActivated: function(link)
+      {
+        splashStuck.visible = false
+        mainWindow.splashStatus = qsTr("Reconnecting")
+        web.reload()
+      }
+    }
+
+    Timer
+    {
+      id: splashStuckTimer
+      interval: 15000
+      running: mainWindow.splashVisible
+      onTriggered: splashStuck.visible = true
+    }
+  }
+
+  Timer
+  {
+    id: splashHandoff
+    interval: 350
+    onTriggered: mainWindow.splashVisible = false
   }
 
   Text

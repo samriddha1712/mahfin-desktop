@@ -1,6 +1,7 @@
 
 add_sources(
   CachedRegexMatcher.cpp CachedRegexMatcher.h
+  GraphicsCapability.cpp GraphicsCapability.h
   Utils.cpp Utils.h
   Log.cpp Log.h
 )

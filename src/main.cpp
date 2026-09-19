@@ -1,5 +1,7 @@
 #include <QGuiApplication>
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QIcon>
 #include <QtQml>
@@ -12,6 +14,8 @@
 #include <QCommandLineOption>
 #include <QDebug>
 #include <QSettings>
+#include <QDateTime>
+#include <QTimer>
 
 #include "shared/Names.h"
 #include "system/SystemComponent.h"
@@ -28,6 +32,7 @@
 #include "Globals.h"
 #include "ui/ErrorMessage.h"
 #include "UniqueApplication.h"
+#include "utils/GraphicsCapability.h"
 #include "utils/Log.h"
 
 #ifdef Q_OS_MAC
@@ -125,10 +130,22 @@ void ShowLicenseInfo()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-QStringList g_qtFlags = {
-  "--enable-gpu-rasterization",
-  "--disable-features=MediaSessionService"
-};
+/*
+ * Nothing here any more, and the list stays for the mechanism.
+ *
+ * This used to carry `--enable-gpu-rasterization` and a `--disable-features`
+ * switch, appended to argv before anything had been read. Both were wrong in
+ * the same way: argv is built before the profile is resolved, so the flags
+ * were fixed before there was any way to know what machine they were being
+ * fixed on — and asking Chromium to raster on the GPU is actively harmful when
+ * the "GPU" is llvmpipe answering from the CPU.
+ *
+ * They now go through QTWEBENGINE_CHROMIUM_FLAGS further down, which is set
+ * after the graphics probe and before QtWebEngineQuick::initialize(), so the
+ * switches can differ per machine. Appending to argv still has to happen, and
+ * an empty list is the honest way to say there is nothing left to append.
+ */
+QStringList g_qtFlags = {};
 
 /////////////////////////////////////////////////////////////////////////////////////////
 int main(int argc, char *argv[])
@@ -175,6 +192,9 @@ int main(int argc, char *argv[])
     gpuBackendOption.setValueName("backend");
     gpuBackendOption.setDefaultValue("default");
 
+    auto resetGraphicsOption = QCommandLineOption("reset-graphics",
+      "Forget a previous failed start and probe the graphics driver again.");
+
     auto profileOption = QCommandLineOption("profile", "Use specific profile for this session.");
     profileOption.setValueName("name");
 
@@ -195,6 +215,7 @@ int main(int argc, char *argv[])
     parser.addOption(configDirOption);
     parser.addOption(logLevelOption);
     parser.addOption(gpuBackendOption);
+    parser.addOption(resetGraphicsOption);
     parser.addOption(profileOption);
     parser.addOption(setDefaultProfileOption);
     parser.addOption(listProfilesOption);
@@ -425,11 +446,145 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    /*
+     * Find out what this machine can draw with, and remember if asking killed
+     * us.
+     *
+     * The failure this guards against does not report itself. On a machine
+     * with no usable OpenGL driver the application starts, draws the right
+     * pixels, and does it entirely on the CPU — three Chromium processes, an
+     * mpv render context and a window-sized composite, all on cores that are
+     * also running the rest of the person's computer. From the outside it is
+     * not a graphics problem at all: the machine stops responding, and the
+     * only thing anyone can report is "it crashes and freezes everything".
+     *
+     * Two mechanisms, because either alone has a hole in it.
+     *
+     * GraphicsCapability looks at the display adapter and the size of the
+     * machine. That catches the common case — a PC running on Microsoft's
+     * basic display driver because no vendor one was ever installed — and it
+     * is cheap and free of side effects. What it cannot see is a driver that
+     * is present but too old or too broken for Qt to use, because seeing that
+     * needs a GL context, and a GL context cannot be created here without
+     * settling the process's DPI awareness behind Qt's back.
+     *
+     * So the lock file catches the rest, empirically. It is written now and
+     * removed either twenty seconds into a run that is still answering, or on
+     * a clean exit. Finding it here means the previous launch did neither — it
+     * died, or it hung hard enough that its own event loop never ran again.
+     * That is precisely the reported symptom, and the response is to not go
+     * down the same path twice. `--reset-graphics` is the way back out once a
+     * driver has been installed.
+     */
+    const QString graphicsGuardPath =
+      ProfileManager::activeProfile().dataDir("graphics-startup.lock");
+
+    if (parser.isSet("reset-graphics") && QFile::exists(graphicsGuardPath))
+    {
+      QFile::remove(graphicsGuardPath);
+      qInfo() << "Forgetting the previous failed start, as asked";
+    }
+
+    /*
+     * Evidence, not a guess, so nothing overrides it.
+     *
+     * Kept apart from the setting below for one reason: a machine that has
+     * already failed to start must not be sent down the same path again
+     * because somebody once chose "Hardware" in the settings. That is a loop
+     * with no way out of it from inside an application whose whole problem is
+     * that it will not open. `--reset-graphics` is the way back, and it is
+     * deliberately something you have to mean.
+     */
+    const bool previousStartFailed = QFile::exists(graphicsGuardPath);
+    if (previousStartFailed)
+    {
+      GraphicsCapability::forceLow(
+        QObject::tr("the previous start did not get as far as drawing a window"));
+      qWarning() << "The last run never finished starting up. Using the safest graphics "
+                    "settings. Run with --reset-graphics once the display driver is "
+                    "sorted out.";
+    }
+
+    /*
+     * Chosen by hand, and it outranks the probe in both directions: somebody on
+     * a machine this misreads can pin it, and somebody who wants the effects
+     * back on a machine it reads correctly can have them.
+     */
+    const QString graphicsMode =
+      SettingsComponent::readPreinitValue(SETTINGS_SECTION_MAIN, "graphicsMode").toString();
+    if (graphicsMode == "software")
+      GraphicsCapability::forceLow(QObject::tr("the graphics mode setting is set to software"));
+    else if (graphicsMode == "hardware" && !previousStartFailed)
+      GraphicsCapability::forceNormal(QObject::tr("the graphics mode setting is set to hardware"));
+
+    {
+      // mkpath rather than trusting the profile to have been laid out already.
+      // A guard that silently fails to be written is a guard that silently is
+      // not there, and this is the one thing here with no other way of finding
+      // out that it is broken.
+      QDir().mkpath(QFileInfo(graphicsGuardPath).absolutePath());
+      QFile guard(graphicsGuardPath);
+      if (guard.open(QIODevice::WriteOnly | QIODevice::Truncate))
+      {
+        guard.write(QDateTime::currentDateTimeUtc().toString(Qt::ISODate).toUtf8());
+        guard.close();
+      }
+      else
+      {
+        qWarning() << "Could not write the start-up guard at" << graphicsGuardPath
+                   << "- a failed start will not be noticed next time";
+      }
+    }
+
+    /*
+     * One answer, read from one place. The guard and the setting were pushed
+     * into GraphicsCapability above rather than combined into a local, so that
+     * SystemComponent — which hands this same verdict to QML and to the web
+     * client — cannot come to a different conclusion than the flags this
+     * process was actually started with.
+     */
+    const bool lowGraphics = GraphicsCapability::probe().isLow();
+
+    qInfo() << qPrintable(GraphicsCapability::describe());
+    for (const QString& reason : GraphicsCapability::probe().reasons)
+      qInfo() << "  reduced settings because" << qPrintable(reason);
+
     QStringList chromiumFlags;
+
+    /*
+     * One switch, because Chromium keeps only the last occurrence of a repeated
+     * one. Two separate `--disable-features` lines meant the second silently
+     * threw the first away, which is the kind of bug that shows up as a feature
+     * quietly coming back on a platform nobody is testing.
+     */
+    QStringList disabledFeatures{"MediaSessionService"};
 #ifdef Q_OS_LINUX
-    // Disable QtWebEngine's automatic MPRIS registration - we handle it ourselves
-    chromiumFlags << "--disable-features=MediaSessionService,HardwareMediaKeyHandling";
+    // We register MPRIS ourselves, and handle the media keys ourselves.
+    disabledFeatures << "HardwareMediaKeyHandling";
 #endif
+    if (lowGraphics)
+    {
+      /*
+       * Occlusion tracking walks the window tree on every window change to
+       * work out whether Chromium may stop drawing. On a machine already short
+       * of CPU it costs more than the drawing it saves, and it is a long-
+       * standing source of windows that come back blank.
+       */
+      disabledFeatures << "CalculateNativeWinOcclusion";
+    }
+    chromiumFlags << "--disable-features=" + disabledFeatures.join(",");
+
+    /*
+     * Raster on the GPU, but only where there is one.
+     *
+     * This was unconditional. On a machine whose OpenGL is llvmpipe it asks the
+     * CPU to do the rasterising *through* a software GL implementation, which
+     * is strictly more work than asking it to rasterise directly — the one
+     * configuration where the flag makes things worse rather than better.
+     */
+    if (!lowGraphics)
+      chromiumFlags << "--enable-gpu-rasterization";
+
     // Tell Blink there is a mouse, because inside a QQuickWebEngineView it does
     // not work that out for itself.
     //
@@ -475,9 +630,41 @@ int main(int argc, char *argv[])
      * Chromium itself uses.
      */
     const QString gpuBackend = parser.value("gpu-backend");
-    if (parser.isSet("disable-gpu") || gpuBackend == "software")
+    if (parser.isSet("disable-gpu") || gpuBackend == "software" || lowGraphics)
     {
-      chromiumFlags << "--disable-gpu";
+      /*
+       * No GPU process at all, and no pretend one either.
+       *
+       * `--disable-gpu` on its own leaves Chromium free to start SwiftShader,
+       * its own software GL, for anything that asks for a 3D context — so a
+       * machine with no GPU ends up running *two* software rasterisers, one
+       * inside the other. Nothing in this interface needs WebGL, so the
+       * fallback is turned off with it and the renderer rasterises to plain
+       * memory, which Qt uploads once per frame.
+       */
+      chromiumFlags << "--disable-gpu" << "--disable-software-rasterizer";
+
+      if (lowGraphics)
+      {
+        /*
+         * Leave the machine something to run itself with.
+         *
+         * Raster threads default to one per core, and with the GPU process
+         * gone they are the busiest threads in the process. Letting them take
+         * every core is what turns "the app is slow" into "the computer has
+         * stopped" — the complaint that started all of this. Two is enough to
+         * keep scrolling smooth and leaves the rest of the machine usable.
+         *
+         * One renderer process, likewise: this is a single-origin application
+         * that never opens a second site, so the isolation Chromium would buy
+         * with a second process is isolation from nothing, paid for in a few
+         * hundred MB on a machine that does not have them spare.
+         */
+        chromiumFlags << "--num-raster-threads=2"
+                      << "--renderer-process-limit=1"
+                      << "--disable-accelerated-2d-canvas"
+                      << "--disable-smooth-scrolling";
+      }
     }
     else if (gpuBackend == "gl" || gpuBackend == "d3d11")
     {
@@ -545,6 +732,23 @@ int main(int argc, char *argv[])
     UniqueApplication* uniqueApp = new UniqueApplication(&app);
     if (!uniqueApp->ensureUnique())
     {
+      /*
+       * This process raised the window of the copy that was already running
+       * and is now leaving, so take the start-up guard back off.
+       *
+       * It was written further up, before there was any way to know this was a
+       * second instance — and nothing else would ever remove it, because the
+       * two things that do are twenty seconds of *this* event loop and *this*
+       * process exiting through app.exec(), neither of which happens here.
+       * Without this, double-clicking the icon while Mahfin is already open
+       * would leave a guard behind and send the next genuine launch into safe
+       * mode for no reason at all.
+       *
+       * The instance that is actually running looks after its own.
+       */
+      if (QFile::exists(graphicsGuardPath))
+        QFile::remove(graphicsGuardPath);
+
       Log::Cleanup();
       return EXIT_SUCCESS;
     }
@@ -658,8 +862,32 @@ int main(int argc, char *argv[])
     });
     engine->load(QUrl(QStringLiteral("qrc:/webview.qml")));
 
+    /*
+     * Twenty seconds of a responsive event loop is the all-clear.
+     *
+     * Deliberately not the window's first frame: on the machines this is for,
+     * one frame is exactly what a software rasteriser *can* manage before the
+     * process wedges, so clearing the lock there would clear it on every run
+     * that then froze. What has to be proved is that the loop is still turning
+     * some time after everything is up — and if it is not, this timer never
+     * fires, the lock survives, and the next launch starts safe.
+     */
+    QTimer::singleShot(20000, qApp, [graphicsGuardPath]() {
+      if (QFile::exists(graphicsGuardPath))
+        QFile::remove(graphicsGuardPath);
+    });
+
     // run our application
     int ret = app.exec();
+
+    /*
+     * A clean exit is the other all-clear, and it is the one that matters for
+     * anybody who opens the app, plays something and closes it inside the
+     * twenty seconds above — without this they would be sent into safe mode
+     * for having been quick.
+     */
+    if (QFile::exists(graphicsGuardPath))
+      QFile::remove(graphicsGuardPath);
 
     delete uniqueApp;
     Globals::EngineDestroy();

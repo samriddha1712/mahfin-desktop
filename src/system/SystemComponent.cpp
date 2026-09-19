@@ -28,6 +28,7 @@
 #include "Version.h"
 #include "settings/SettingsComponent.h"
 #include "settings/SettingsSection.h"
+#include "utils/GraphicsCapability.h"
 #include "Paths.h"
 #include "core/ProfileManager.h"
 #include "Names.h"
@@ -539,6 +540,13 @@ void SystemComponent::hello(const QString& version)
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+bool SystemComponent::lowGraphics() const
+{
+  return GraphicsCapability::probe().isLow();
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
 QString SystemComponent::getNativeShellScript()
 {
   static QString cachedScript;
@@ -578,6 +586,24 @@ QString SystemComponent::getNativeShellScript()
   clientData.insert("sections", QJsonValue::fromVariant(SettingsComponent::Get().orderedSections()));
   clientData.insert("settingsDescriptions", QJsonValue::fromVariant(settingsDescriptions));
   clientData.insert("settings", QJsonValue::fromVariant(SettingsComponent::Get().allValues()));
+
+  /*
+   * What the machine can draw with, handed to the page.
+   *
+   * The shell can already stop *itself* asking too much of a weak machine —
+   * Chromium's GPU process, the raster threads — but the most expensive thing
+   * on screen is not the shell, it is the interface: this library's home page
+   * is layers of backdrop-blur, gradient halos and autoplaying trailers, and
+   * every one of those is a full-window composite per frame. Blur on a
+   * software rasteriser is the single most costly thing a page can ask for.
+   *
+   * Only the shell knows whether a GPU answered, and only the page can stop
+   * asking, so the answer has to cross. `flat-mode` on the web side already
+   * exists for exactly this and already has the CSS behind it; it was reached
+   * only by a TV user agent or a two-core machine, neither of which describes
+   * a Windows laptop with no OpenGL driver. This is the missing third trigger.
+   */
+  clientData.insert("graphics", GraphicsCapability::toJson());
 
   QString jmpInfoDeclaration = "const jmpInfo = JSON.parse(window.atob(\"" +
                                 QJsonDocument(clientData).toJson(QJsonDocument::Compact).toBase64() +
