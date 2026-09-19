@@ -224,9 +224,28 @@ if(LINUX_DBUS)
 endif()
 
 # Delay-load libmpv on Windows for runtime AVX2 fallback
+#
+# INTERFACE, not PRIVATE, and that distinction is the whole mechanism.
+#
+# jmp_core is a STATIC library, so nothing links it -- it is archived. Link
+# options set PRIVATE on it are used when linking the target itself, which for
+# an archive never happens, and PRIVATE does not propagate to whoever consumes
+# it. So `/DELAYLOAD` was silently dropped and never reached the executable's
+# link line: `dumpbin /dependents` listed libmpv-2.dll as an ordinary import.
+#
+# That is not a cosmetic difference. setupMpvFallback() in main.cpp swaps in a
+# non-AVX2 libmpv for CPUs that cannot run the AVX2 build, and it can only work
+# if the DLL has *not* been loaded yet. As an ordinary import, Windows maps
+# libmpv-2.dll while the process is starting, before main() is entered -- so on
+# a pre-AVX2 CPU the process dies on an illegal instruction before the fallback
+# it ships gets to run, and the swap would fail anyway against a mapped file.
+#
+# INTERFACE puts the option on the link line of everything that links jmp_core,
+# which is the executable, which is the binary that needs the delay-load
+# descriptor.
 if(WIN32)
   target_link_libraries(jmp_core delayimp.lib)
-  target_link_options(jmp_core PRIVATE /DELAYLOAD:libmpv-2.dll)
+  target_link_options(jmp_core INTERFACE /DELAYLOAD:libmpv-2.dll)
 endif()
 
 target_link_libraries(${MAIN_TARGET} PRIVATE jmp_core)
