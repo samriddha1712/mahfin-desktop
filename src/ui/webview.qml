@@ -270,7 +270,15 @@ Window
      */
     onPermissionRequested: function(permission)
     {
-      if (permission.permissionType === WebEnginePermission.Notifications)
+      /*
+       * The scoped form. QWebEnginePermission::PermissionType is declared with
+       * enforcesScopedEnums, so `WebEnginePermission.Notifications` is plain
+       * `undefined` in QML -- the comparison silently never matched, the
+       * permission was never granted, and the switch in the web app's alerts
+       * screen did nothing at all when pressed. QML gives no warning for
+       * reading an undefined enum, which is why it survived a clean build.
+       */
+      if (permission.permissionType === WebEnginePermission.PermissionType.Notifications)
       {
         console.log("Granting notification permission to", permission.origin)
         permission.grant()
