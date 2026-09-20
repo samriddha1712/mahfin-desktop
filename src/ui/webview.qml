@@ -254,6 +254,30 @@ Window
     backgroundColor: "transparent"
 
     /*
+     * Notifications, and nothing else.
+     *
+     * A permission nobody answers is denied, so without this
+     * `Notification.requestPermission()` never resolved to "granted" and the
+     * switch in Mahfin's own settings could not be turned on. Granting here is
+     * not granting blindly: this app opens exactly one site, the request can
+     * only have come from a button somebody pressed in that site's settings,
+     * and there is no address bar to arrive anywhere else from.
+     *
+     * Every other permission type is deliberately left alone rather than
+     * denied, so this cannot quietly change what a future one does -- an
+     * unhandled request is refused by Qt, which is the behaviour that was here
+     * before and the safe default for a camera or a microphone.
+     */
+    onPermissionRequested: function(permission)
+    {
+      if (permission.permissionType === WebEnginePermission.Notifications)
+      {
+        console.log("Granting notification permission to", permission.origin)
+        permission.grant()
+      }
+    }
+
+    /*
      * Render into an offscreen layer, on the platform that needs it and no
      * other.
      *

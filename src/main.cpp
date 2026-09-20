@@ -31,6 +31,7 @@
 #include "ui/WindowManager.h"
 #include "Globals.h"
 #include "ui/ErrorMessage.h"
+#include "ui/NotificationPresenter.h"
 #include "UniqueApplication.h"
 #include "utils/GraphicsCapability.h"
 #include "utils/Log.h"
@@ -723,6 +724,13 @@ int main(int argc, char *argv[])
       QWebEngineProfile* defaultProfile = QWebEngineProfile::defaultProfile();
       defaultProfile->setCachePath(ProfileManager::activeProfile().cacheDir("QtWebEngine"));
       defaultProfile->setPersistentStoragePath(ProfileManager::activeProfile().dataDir("QtWebEngine"));
+
+      /*
+       * Without this, a notification the page raises is constructed, accepted
+       * and silently dropped: QtWebEngine has no presenter of its own, so the
+       * desktop app could not show one at all. See NotificationPresenter.
+       */
+      NotificationPresenter::install();
     }
 
 #if defined(Q_OS_MAC) && defined(NDEBUG)
