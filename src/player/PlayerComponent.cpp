@@ -1467,6 +1467,18 @@ void PlayerComponent::updateVideoConfiguration()
  * So every override asks this first, and a setting that has been touched is
  * left exactly as the person left it.
  */
+/**
+ * Where "this machine has room to spare" stops, for the player alone.
+ *
+ * Higher than GraphicsCapability's own thresholds on purpose. Drawing an
+ * interface and moving decoded video around are different costs: 8GB is
+ * plenty for the former while a 75MB demuxer cache plus three Chromium
+ * processes eats into it, and four cores draw fine while still being made to
+ * suffer by a per-frame copy out of the GPU and back.
+ */
+constexpr quint64 kModestMemoryMB = 8192;
+constexpr int kModestCoreCount = 4;
+
 static bool settingIsShippedDefault(const QString& section, const QString& key)
 {
   SettingsSection* s = SettingsComponent::Get().getSection(section);
@@ -1499,7 +1511,31 @@ void PlayerComponent::setVideoConfiguration()
    * overridden, and none of them changes which file is played: the stream is
    * still direct played exactly as it arrives.
    */
-  const bool lowTier = GraphicsCapability::probe().isLow();
+  /*
+   * Two budgets, because they answer two different questions, and the first
+   * cut of this conflated them.
+   *
+   * `cannotDraw` is GraphicsCapability's own Low tier: a CPU is doing the
+   * drawing, or there is not enough machine for Chromium and mpv and the
+   * scene graph at once. It is a deliberately narrow test -- a software
+   * renderer, under 4GB, or two cores -- because it also flattens the
+   * interface, and flattening the interface on an ordinary laptop would be a
+   * regression for the many to help the few.
+   *
+   * `modestMachine` is the question the *player* needs answered, and it is a
+   * different one: not "can this machine draw" but "can it afford the
+   * expensive way of moving frames around". An HP ProBook with a working
+   * Intel driver, 8GB and four cores draws perfectly well and is nowhere near
+   * the Low tier -- and is exactly the machine that was seizing up. Reusing
+   * the drawing tier here would have left it untouched, which is the whole
+   * reason this is separate.
+   */
+  const GraphicsCapability::Info& gfx = GraphicsCapability::probe();
+  const bool cannotDraw = gfx.isLow();
+  const bool modestMachine =
+      cannotDraw
+      || (gfx.memoryMB > 0 && gfx.memoryMB <= kModestMemoryMB)
+      || (gfx.cores > 0 && gfx.cores <= kModestCoreCount);
 
   QVariant syncMode = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "sync_mode");
   /*
@@ -1508,7 +1544,7 @@ void PlayerComponent::setVideoConfiguration()
    * smoothness it buys is not visible anyway, because frames are already
    * being missed.
    */
-  if (lowTier && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "sync_mode"))
+  if (modestMachine && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "sync_mode"))
     syncMode = "audio";
   m_mpv->setProperty( "video-sync", syncMode);
 
@@ -1522,7 +1558,7 @@ void PlayerComponent::setVideoConfiguration()
    * the GPU and is what the weak machines actually need; the shader pipeline
    * it costs us is one we are turning off below regardless.
    */
-  if (lowTier && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "hardwareDecoding"))
+  if (modestMachine && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "hardwareDecoding"))
     hardwareDecodingMode = "enabled";
   QString hwdecMode = "no";
   QString hwdecVTFormat = "no";
@@ -1550,17 +1586,17 @@ void PlayerComponent::setVideoConfiguration()
    * These are the contents of mpv's own `fast` profile, spelled out because
    * applying a named profile at runtime does not reliably unapply.
    */
-  const char* const scaler = lowTier ? "bilinear" : "lanczos";
+  const char* const scaler = cannotDraw ? "bilinear" : "lanczos";
   m_mpv->setProperty( "scale", scaler);
-  m_mpv->setProperty( "dscale", lowTier ? "bilinear" : "mitchell");
+  m_mpv->setProperty( "dscale", cannotDraw ? "bilinear" : "mitchell");
   m_mpv->setProperty( "cscale", scaler);
-  m_mpv->setProperty( "dither-depth", lowTier ? "no" : "auto");
-  m_mpv->setProperty( "correct-downscaling", !lowTier);
-  m_mpv->setProperty( "sigmoid-upscaling", !lowTier);
-  m_mpv->setProperty( "deband", !lowTier);
+  m_mpv->setProperty( "dither-depth", cannotDraw ? "no" : "auto");
+  m_mpv->setProperty( "correct-downscaling", !cannotDraw);
+  m_mpv->setProperty( "sigmoid-upscaling", !cannotDraw);
+  m_mpv->setProperty( "deband", !cannotDraw);
   // Tone mapping an HDR frame by measuring its peak costs a pass over every
   // frame. The static fallback is less accurate and free.
-  m_mpv->setProperty( "hdr-compute-peak", !lowTier);
+  m_mpv->setProperty( "hdr-compute-peak", !cannotDraw);
 
   QVariant deinterlace = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "deinterlace");
   m_mpv->setProperty( "deinterlace", deinterlace.toBool() ? "yes" : "no");
@@ -1581,8 +1617,13 @@ void PlayerComponent::setVideoConfiguration()
    * and swapping, from the front of the machine, is indistinguishable from a
    * freeze.
    */
-  if (lowTier && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "cache"))
-    cache = 10;
+  if (settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "cache"))
+  {
+    if (cannotDraw)
+      cache = 10;
+    else if (modestMachine)
+      cache = 25;
+  }
   m_mpv->setProperty( "demuxer-max-bytes", cache.toInt() * 1024 * 1024);
 
   updateVideoAspectSettings();
