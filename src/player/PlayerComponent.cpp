@@ -21,6 +21,7 @@
 #include <math.h>
 #include <string.h>
 #include <shared/Paths.h>
+#include "utils/GraphicsCapability.h"
 #include <QRegularExpression>
 
 #if !defined(Q_OS_WIN)
@@ -1457,15 +1458,72 @@ void PlayerComponent::updateVideoConfiguration()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * Whether a setting is still whatever this application shipped.
+ *
+ * The low-tier tuning below leans on this. Lowering a default for a machine
+ * that cannot afford it is help; overwriting a value somebody went into the
+ * settings and chose is not, and they have no way of telling that it happened.
+ * So every override asks this first, and a setting that has been touched is
+ * left exactly as the person left it.
+ */
+static bool settingIsShippedDefault(const QString& section, const QString& key)
+{
+  SettingsSection* s = SettingsComponent::Get().getSection(section);
+  if (!s)
+    return false;
+  return s->value(key) == s->defaultValue(key);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setVideoConfiguration()
 {
   if (!m_mpv)
     return;
 
+  /*
+   * What a machine that is already struggling should be asked for.
+   *
+   * GraphicsCapability decides, before Qt starts, whether anything is
+   * accelerating the drawing and whether there is enough machine to run
+   * Chromium, mpv and the scene graph at once. Until now that verdict reached
+   * the interface and the Chromium switches and stopped there, so a laptop
+   * flagged Low still got the full player: a 75MB demuxer cache, every frame
+   * copied out of the GPU and back through mpv's shader pipeline, and the
+   * expensive scalers. The interface went quiet and the machine still seized,
+   * which is the report that prompted this -- not a stutter and not
+   * buffering, but audio, video and the window all stopping together, which
+   * is what a machine that has run out of memory and cores looks like.
+   *
+   * Each of these is a default being lowered, never a choice being
+   * overridden, and none of them changes which file is played: the stream is
+   * still direct played exactly as it arrives.
+   */
+  const bool lowTier = GraphicsCapability::probe().isLow();
+
   QVariant syncMode = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "sync_mode");
+  /*
+   * display-resample retimes every frame against the refresh rate and is the
+   * most expensive mode there is. On a machine with nothing to spare the
+   * smoothness it buys is not visible anyway, because frames are already
+   * being missed.
+   */
+  if (lowTier && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "sync_mode"))
+    syncMode = "audio";
   m_mpv->setProperty( "video-sync", syncMode);
 
   QString hardwareDecodingMode = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "hardwareDecoding").toString();
+  /*
+   * "copy" is the shipped default because it is the compatible one: frames
+   * come back to system memory so mpv's shader pipeline can work on them.
+   * That copy is per frame, in both directions, and on an integrated GPU
+   * sharing single-channel memory with everything else it is the most
+   * expensive thing in the playback path. Direct decoding leaves the frame on
+   * the GPU and is what the weak machines actually need; the shader pipeline
+   * it costs us is one we are turning off below regardless.
+   */
+  if (lowTier && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "hardwareDecoding"))
+    hardwareDecodingMode = "enabled";
   QString hwdecMode = "no";
   QString hwdecVTFormat = "no";
   if (hardwareDecodingMode == "enabled")
@@ -1482,6 +1540,28 @@ void PlayerComponent::setVideoConfiguration()
   m_mpv->setProperty( "hwdec", hwdecMode);
   m_mpv->setProperty( "hwdec-image-format", hwdecVTFormat);
 
+  /*
+   * mpv's own rendering quality, set on both branches rather than only on
+   * Low. This runs again on every settings change, so a one-sided version
+   * would latch: switch graphicsMode back to Hardware and the cheap scalers
+   * would stay until the next restart, with nothing on screen explaining why
+   * the picture had not improved.
+   *
+   * These are the contents of mpv's own `fast` profile, spelled out because
+   * applying a named profile at runtime does not reliably unapply.
+   */
+  const char* const scaler = lowTier ? "bilinear" : "lanczos";
+  m_mpv->setProperty( "scale", scaler);
+  m_mpv->setProperty( "dscale", lowTier ? "bilinear" : "mitchell");
+  m_mpv->setProperty( "cscale", scaler);
+  m_mpv->setProperty( "dither-depth", lowTier ? "no" : "auto");
+  m_mpv->setProperty( "correct-downscaling", !lowTier);
+  m_mpv->setProperty( "sigmoid-upscaling", !lowTier);
+  m_mpv->setProperty( "deband", !lowTier);
+  // Tone mapping an HDR frame by measuring its peak costs a pass over every
+  // frame. The static fallback is less accurate and free.
+  m_mpv->setProperty( "hdr-compute-peak", !lowTier);
+
   QVariant deinterlace = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "deinterlace");
   m_mpv->setProperty( "deinterlace", deinterlace.toBool() ? "yes" : "no");
 
@@ -1493,6 +1573,16 @@ void PlayerComponent::setVideoConfiguration()
   setAudioDelay(m_playbackAudioDelay);
 
   QVariant cache = SettingsComponent::Get().value(SETTINGS_SECTION_VIDEO, "cache");
+  /*
+   * 75MB of demuxer cache is nothing on a desktop and a real fraction of what
+   * is left on a 4GB laptop already running three Chromium processes. The
+   * "Tiny" option exists for exactly this and is what the machine gets, which
+   * costs a little more reading from the network and buys not swapping --
+   * and swapping, from the front of the machine, is indistinguishable from a
+   * freeze.
+   */
+  if (lowTier && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "cache"))
+    cache = 10;
   m_mpv->setProperty( "demuxer-max-bytes", cache.toInt() * 1024 * 1024);
 
   updateVideoAspectSettings();
