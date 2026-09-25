@@ -417,9 +417,19 @@ Window
 
     onFullScreenRequested:
     {
-      console.log("Request fullscreen: " + request.toggleOn)
-      mainWindow.setFullScreen(request.toggleOn)
+      console.log("Request fullscreen: " + request.toggleOn + " loading: " + loading)
       request.accept()
+      /*
+       * A page that is being replaced gives up its fullscreen on the way out,
+       * and that is not the viewer asking to leave. Mahfin reloads into the
+       * next episode (see playNavigation.ts in the web app), so following it
+       * dropped the window out of fullscreen at every episode change. The new
+       * page reads the window's state and draws its button to match, and Esc
+       * or the button still take the window out.
+       */
+      if (!request.toggleOn && loading)
+        return
+      mainWindow.setFullScreen(request.toggleOn)
     }
 
     onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID)
