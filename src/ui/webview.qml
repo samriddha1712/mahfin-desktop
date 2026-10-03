@@ -67,15 +67,18 @@ Window
   }
 
   function toggleFullscreen() {
-    visibility = (visibility === Window.FullScreen) ? Window.Windowed : Window.FullScreen
+    setFullScreen(visibility !== Window.FullScreen)
   }
 
   function toggleDebug() {
     showDebugLayer = !showDebugLayer
   }
 
+  // Through WindowManager, which remembers whether the window was maximized
+  // before and puts it back that way. Setting `visibility` here always came back
+  // as a normal window, so a maximized one shrank every time fullscreen ended.
   function setFullScreen(enable) {
-    visibility = enable ? Window.FullScreen : Window.Windowed
+    components.window.setFullScreen(enable)
   }
 
   function minimizeWindow() {
@@ -335,6 +338,9 @@ Window
     url: mainWindow.webUrl
     focus: true
     property string currentHoveredUrl: ""
+    // Where the page is going while it loads. Set on LoadStartedStatus, which
+    // arrives before the outgoing page gives up its fullscreen.
+    property string loadingUrl: ""
     onLinkHovered: function(hoveredUrl)
     {
       web.currentHoveredUrl = hoveredUrl;
@@ -376,6 +382,7 @@ Window
       if (loadingInfo.status == WebEngineView.LoadStartedStatus)
       {
         console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
+        web.loadingUrl = loadingInfo.url;
 
         // Only for the very first document. Every later navigation happens
         // inside a library the viewer is already looking at, and throwing a
@@ -435,7 +442,8 @@ Window
 
     onFullScreenRequested:
     {
-      console.log("Request fullscreen: " + request.toggleOn + " loading: " + loading)
+      console.log("Request fullscreen: " + request.toggleOn + " loading: " + loading +
+                  " to: " + web.loadingUrl)
       request.accept()
       /*
        * A page that is being replaced gives up its fullscreen on the way out,
@@ -444,8 +452,13 @@ Window
        * dropped the window out of fullscreen at every episode change. The new
        * page reads the window's state and draws its button to match, and Esc
        * or the button still take the window out.
+       *
+       * Only when the page being loaded is another player, though. Back from
+       * the player is a page load too — the player is always opened as one —
+       * and holding fullscreen for that left the library filling the screen
+       * with no title bar, no close button and nothing on the page to undo it.
        */
-      if (!request.toggleOn && loading)
+      if (!request.toggleOn && loading && /\/play\//.test(web.loadingUrl))
         return
       mainWindow.setFullScreen(request.toggleOn)
     }

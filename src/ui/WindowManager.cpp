@@ -394,15 +394,27 @@ void WindowManager::onVisibilityChanged(QWindow::Visibility visibility)
     qDebug() << "onVisibilityChanged: NOT updating m_previousVisibility (visibility is FS or Hidden)";
   }
 
-  // Update fullscreen setting (in-memory only) when state changes
-  if (isFS != wasFS)
+  /*
+   * Update the fullscreen setting (in-memory only) when it no longer matches.
+   *
+   * Compared against the setting itself, not `wasFS`: m_previousVisibility
+   * never holds FullScreen (see above), so `wasFS` was always false and only
+   * *entering* fullscreen was ever recorded. Leaving it left the setting true,
+   * and the web client reads exactly this setting to draw its fullscreen button
+   * on a page that outlived the document's own fullscreen — so a windowed
+   * player went on offering "exit fullscreen". updateMainSectionSettings only
+   * acts when the setting disagrees with the window, so this cannot loop.
+   */
+  const bool settingFS =
+    SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "fullscreen").toBool();
+  if (isFS != settingFS)
   {
     SettingsSection* section = SettingsComponent::Get().getSection(SETTINGS_SECTION_MAIN);
     if (section)
       section->setValueNoSave("fullscreen", isFS);
-
-    emit fullScreenSwitched();
   }
+  if (isFS != wasFS)
+    emit fullScreenSwitched();
 
   updateWindowState(false);
 }
