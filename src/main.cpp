@@ -499,7 +499,7 @@ int main(int argc, char *argv[])
     const bool previousStartFailed = QFile::exists(graphicsGuardPath);
     if (previousStartFailed)
     {
-      GraphicsCapability::forceLow(
+      GraphicsCapability::forceSoftware(
         QObject::tr("the previous start did not get as far as drawing a window"));
       qWarning() << "The last run never finished starting up. Using the safest graphics "
                     "settings. Run with --reset-graphics once the display driver is "
@@ -514,7 +514,7 @@ int main(int argc, char *argv[])
     const QString graphicsMode =
       SettingsComponent::readPreinitValue(SETTINGS_SECTION_MAIN, "graphicsMode").toString();
     if (graphicsMode == "software")
-      GraphicsCapability::forceLow(QObject::tr("the graphics mode setting is set to software"));
+      GraphicsCapability::forceSoftware(QObject::tr("the graphics mode setting is set to software"));
     else if (graphicsMode == "hardware" && !previousStartFailed)
       GraphicsCapability::forceNormal(QObject::tr("the graphics mode setting is set to hardware"));
 
@@ -545,6 +545,7 @@ int main(int argc, char *argv[])
      * process was actually started with.
      */
     const bool lowGraphics = GraphicsCapability::probe().isLow();
+    const bool softwareGraphics = GraphicsCapability::probe().drawsInSoftware();
 
     qInfo() << qPrintable(GraphicsCapability::describe());
     for (const QString& reason : GraphicsCapability::probe().reasons)
@@ -583,7 +584,10 @@ int main(int argc, char *argv[])
      * is strictly more work than asking it to rasterise directly — the one
      * configuration where the flag makes things worse rather than better.
      */
-    if (!lowGraphics)
+    const QString gpuBackend = parser.value("gpu-backend");
+    const bool cpuDraws =
+        softwareGraphics || parser.isSet("disable-gpu") || gpuBackend == "software";
+    if (!cpuDraws)
       chromiumFlags << "--enable-gpu-rasterization";
 
     // Tell Blink there is a mouse, because inside a QQuickWebEngineView it does
@@ -630,8 +634,7 @@ int main(int argc, char *argv[])
      * thing as `--gpu-backend=software` and is kept because it is the spelling
      * Chromium itself uses.
      */
-    const QString gpuBackend = parser.value("gpu-backend");
-    if (parser.isSet("disable-gpu") || gpuBackend == "software" || lowGraphics)
+    if (cpuDraws)
     {
       /*
        * No GPU process at all, and no pretend one either.
@@ -643,29 +646,8 @@ int main(int argc, char *argv[])
        * fallback is turned off with it and the renderer rasterises to plain
        * memory, which Qt uploads once per frame.
        */
-      chromiumFlags << "--disable-gpu" << "--disable-software-rasterizer";
-
-      if (lowGraphics)
-      {
-        /*
-         * Leave the machine something to run itself with.
-         *
-         * Raster threads default to one per core, and with the GPU process
-         * gone they are the busiest threads in the process. Letting them take
-         * every core is what turns "the app is slow" into "the computer has
-         * stopped" — the complaint that started all of this. Two is enough to
-         * keep scrolling smooth and leaves the rest of the machine usable.
-         *
-         * One renderer process, likewise: this is a single-origin application
-         * that never opens a second site, so the isolation Chromium would buy
-         * with a second process is isolation from nothing, paid for in a few
-         * hundred MB on a machine that does not have them spare.
-         */
-        chromiumFlags << "--num-raster-threads=2"
-                      << "--renderer-process-limit=1"
-                      << "--disable-accelerated-2d-canvas"
-                      << "--disable-smooth-scrolling";
-      }
+      chromiumFlags << "--disable-gpu" << "--disable-software-rasterizer"
+                    << "--disable-accelerated-2d-canvas";
     }
     else if (gpuBackend == "gl" || gpuBackend == "d3d11")
     {
@@ -676,6 +658,50 @@ int main(int argc, char *argv[])
       fprintf(stderr, "Error: unknown --gpu-backend '%s'. Use default, gl, d3d11 or software.\n",
               qPrintable(gpuBackend));
       return EXIT_FAILURE;
+    }
+
+    if (lowGraphics)
+    {
+      /*
+       * Leave the machine something to run itself with.
+       *
+       * Raster threads default to one per core, and with no GPU to raster on
+       * they are the busiest threads in the process. Letting them take every
+       * core is what turns "the app is slow" into "the computer has stopped"
+       * — the complaint that started all of this. Two is enough to keep
+       * scrolling smooth and leaves the rest of the machine usable.
+       *
+       * Deliberately not tied to the CPU doing the drawing. A two-core or
+       * 4GB machine keeps its GPU (see drawsInSoftware) and still needs every
+       * saving here; the two questions were one answer until it turned out
+       * that sent working integrated graphics down the software path.
+       *
+       * One renderer process, likewise: this is a single-origin application
+       * that never opens a second site, so the isolation Chromium would buy
+       * with a second process is isolation from nothing, paid for in a few
+       * hundred MB on a machine that does not have them spare.
+       */
+      chromiumFlags << "--num-raster-threads=2"
+                    << "--renderer-process-limit=1"
+                    << "--disable-smooth-scrolling";
+
+
+      /*
+       * Not `--force-prefers-reduced-motion`, although it was tried here and
+       * measured well: with no GPU, an infinite animation anywhere in the page
+       * keeps the whole window redrawing, and forcing reduced motion stopped
+       * every one of them at once.
+       *
+       * It broke playback. Qt WebEngine composites the page over mpv, and where
+       * the page has once painted opaque pixels it keeps them after the element
+       * is gone (see the long note in the web client's globals.css). The player
+       * relies on its opening card and the outgoing page *animating* to
+       * transparent before they leave; with motion forced off they leave at
+       * full opacity, and their last frame stays on screen over the film — the
+       * mark and the home page ghosted over a video nobody could see, sound
+       * playing underneath. The offending animations are fixed in the web
+       * client instead, where each one can be judged on its own.
+       */
     }
 
     // Disable pinch-to-zoom if browser zoom is not allowed

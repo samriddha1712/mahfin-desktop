@@ -11,17 +11,20 @@ namespace
 {
   GraphicsCapability::Info g_info;
   bool g_probed = false;
-  bool g_forcedLow = false;
   bool g_forcedNormal = false;
+  bool g_forcedSoftware = false;
   QStringList g_forcedReasons;
 
-  /** Applies the overrides, in the order that makes low win. */
+  /** Applies the overrides, in the order that makes software win. */
   void applyOverrides(GraphicsCapability::Info& info)
   {
     if (g_forcedNormal)
       info.tier = GraphicsCapability::Tier::Normal;
-    if (g_forcedLow)
+    if (g_forcedSoftware)
+    {
       info.tier = GraphicsCapability::Tier::Low;
+      info.softwareRenderer = true;
+    }
   }
 
   /**
@@ -238,12 +241,11 @@ namespace
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-void GraphicsCapability::forceLow(const QString& reason)
+void GraphicsCapability::forceSoftware(const QString& reason)
 {
-  g_forcedLow = true;
+  g_forcedSoftware = true;
   g_forcedReasons << reason;
 
-  // Already probed: fold the decision into the answer everybody else holds.
   if (g_probed)
   {
     g_info.reasons << reason;
@@ -304,7 +306,7 @@ QJsonObject GraphicsCapability::toJson()
   const Info& info = probe();
   QJsonObject json;
   json.insert("tier", info.isLow() ? "low" : "normal");
-  json.insert("softwareRenderer", info.softwareRenderer);
+  json.insert("softwareRenderer", info.drawsInSoftware());
   json.insert("adapter", info.adapter);
   json.insert("memoryMB", static_cast<double>(info.memoryMB));
   json.insert("cores", info.cores);
@@ -320,7 +322,8 @@ QJsonObject GraphicsCapability::toJson()
 QString GraphicsCapability::describe()
 {
   const Info& info = probe();
-  QString out = QStringLiteral("graphics tier=%1").arg(info.isLow() ? "low" : "normal");
+  QString out = QStringLiteral("graphics tier=%1 drawing=%2")
+                  .arg(info.isLow() ? "low" : "normal", info.drawsInSoftware() ? "cpu" : "gpu");
   if (!info.adapter.isEmpty())
     out += QStringLiteral(" adapter=\"%1\"").arg(info.adapter);
   if (info.memoryMB)

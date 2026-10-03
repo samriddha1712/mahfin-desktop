@@ -62,6 +62,19 @@ namespace GraphicsCapability
     QStringList reasons;
 
     bool isLow() const { return tier == Tier::Low; }
+
+    /*
+     * Whether the CPU has to do the drawing, as opposed to there being not
+     * much machine.
+     *
+     * The two used to be one answer, and a two-core Celeron with a perfectly
+     * good Intel driver was sent down the no-GPU path with the rest: every
+     * page rasterised and composited by the two weakest cores in the building
+     * while the GPU sat idle beside them. Low tier is about asking for less;
+     * this is about who does the work, and only a missing or broken driver
+     * makes the answer "the processor".
+     */
+    bool drawsInSoftware() const { return isLow() && softwareRenderer; }
   };
 
   /** Probes once and caches. Subsequent calls are free. */
@@ -78,12 +91,16 @@ namespace GraphicsCapability
    * the flags the process was actually started with. Pushing the overrides in
    * here means everything downstream reads one answer.
    *
-   * Low wins over normal, structurally rather than by call order: the only
-   * caller of forceLow that is not a preference is the crash guard, and
-   * evidence that the last run died must not be overridden by a setting.
+   * Software wins over normal, structurally rather than by call order: the
+   * only caller of forceSoftware that is not a preference is the crash guard,
+   * and evidence that the last run died must not be overridden by a setting.
+   *
+   * forceSoftware means Low *and* drawn by the CPU — the driver cannot be
+   * trusted with it. Nothing forces Low alone: being short of cores or memory
+   * is something the probe measures, not something anyone chooses.
    */
-  void forceLow(const QString& reason);
   void forceNormal(const QString& reason);
+  void forceSoftware(const QString& reason);
 
   /** For the log, and for the nativeshell payload the web client reads. */
   QJsonObject toJson();
