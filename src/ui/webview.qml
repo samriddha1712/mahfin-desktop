@@ -306,6 +306,24 @@ Window
      */
     layer.enabled: components.system.isLinux || components.system.isFreeBSD
 
+    /*
+     * Tell the page when nobody can see it.
+     *
+     * Minimising the window, or closing it to the tray, leaves Chromium
+     * believing it is on screen: `document.visibilityState` stays "visible",
+     * so requestAnimationFrame keeps firing, timers run at full rate, and the
+     * home page's carousel goes on counting down and changing slides for an
+     * audience of nobody. The page already does the right thing when it is
+     * told — browsers stop drawing a hidden tab, throttle its timers, and the
+     * web client refreshes itself on the way back — it simply never was.
+     *
+     * Playback is not affected: mpv lives out here, not in the page, and the
+     * page only hears from it through web channel events, which a hidden page
+     * still receives.
+     */
+    visible: mainWindow.visible && mainWindow.visibility !== Window.Minimized
+    onVisibleChanged: if (visible) forceActiveFocus()
+
     webChannel: webChannelObject
     settings.errorPageEnabled: false
     settings.localContentCanAccessRemoteUrls: true
