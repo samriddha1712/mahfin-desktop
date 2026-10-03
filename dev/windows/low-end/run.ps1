@@ -1,0 +1,55 @@
+param(
+  # host     : no limits (this Ryzen 9 / RTX laptop)
+  # budget   : ~Core i3 7th gen, 2C/4T, 8 GB, working iGPU driver
+  # lowend   : ~Celeron N4020, 2C/2T, 4 GB, working iGPU driver
+  # nodriver : lowend, but no vendor GPU driver (Qt falls back to llvmpipe)
+  # tieronly : lowend's settings at full speed - separates what the tier does from the slowness
+  # hardcap  : lowend's cores under a Job Object hard CPU-rate cap. Kept for comparison only:
+  #            a hard cap freezes the whole process between quota periods, which no real CPU
+  #            does, and under it video frames reach the screen late and out of order (stale
+  #            window contents over the film, audio fine). Not a Mahfin bug; do not judge
+  #            playback by it.
+  [ValidateSet('host','budget','lowend','nodriver','tieronly','hardcap')] [string]$Machine = 'lowend',
+  [int]$Duration = 120,
+  [string]$Tag = '',
+  [string]$ExtraArgs = '',
+  [long]$MemLimitMB = 0,
+  # Another build to run instead, e.g. a baseline copied next to the real one.
+  [string]$Exe = ''
+)
+$ErrorActionPreference = 'Stop'
+$here = $PSScriptRoot
+$repo = (Resolve-Path "$here\..\..\..").Path
+$exe  = if ($Exe) { $Exe } else { "$repo\build\src\Mahfin Desktop.exe" }
+if (-not $env:QT_DIR) { $env:QT_DIR = 'C:\Qt\6.9.3\msvc2022_64' }
+$env:PATH = "$env:QT_DIR\bin;$repo\build\mpv;$env:PATH"
+$env:QT_OPENGL = $null
+$env:MAHFIN_SIMULATE_MACHINE = $null
+
+# Slowness comes from sharing the app's cores with busy threads ($hog per core):
+# with two of them the app gets about a third of each core, in ordinary scheduler
+# slices - a slower core, rather than a fast one frozen between quota periods.
+# CPU indices: even numbers are separate physical cores on this SMT part.
+$hog = 0; $rate = 0
+switch ($Machine) {
+  'host'     { $cpus = @() }
+  'budget'   { $cpus = @(0,1,2,3); $hog = 1; $env:MAHFIN_SIMULATE_MACHINE = 'ram=8192;cores=4' }
+  'lowend'   { $cpus = @(0,2);     $hog = 2; $env:MAHFIN_SIMULATE_MACHINE = 'ram=4096;cores=2' }
+  'nodriver' { $cpus = @(0,2);     $hog = 2; $env:MAHFIN_SIMULATE_MACHINE = 'ram=4096;cores=2;adapter=Microsoft Basic Display Adapter'
+               $env:QT_OPENGL = 'software' }
+  'tieronly' { $cpus = @();                  $env:MAHFIN_SIMULATE_MACHINE = 'ram=4096;cores=2' }
+  'hardcap'  { $cpus = @(0,2);  $rate = 25;  $env:MAHFIN_SIMULATE_MACHINE = 'ram=4096;cores=2' }
+}
+
+# A second instance just raises the first and exits, so never start on top of one.
+$deadline = (Get-Date).AddSeconds(120)
+while ((Get-Process -Name 'Mahfin Desktop' -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+if (Get-Process -Name 'Mahfin Desktop' -ErrorAction SilentlyContinue) { throw 'an earlier Mahfin Desktop is still running' }
+if (-not ('LowEnd' -as [type])) { Add-Type -Path "$here\LowEnd.cs" }
+$name = if ($Tag) { "$Machine-$Tag" } else { $Machine }
+$csv  = "$here\out\$name.csv"
+New-Item -ItemType Directory -Force "$here\out" | Out-Null
+if (Test-Path "$here\stop") { [IO.File]::Delete("$here\stop") }
+$args2 = "--log-level debug --remote-debugging-port=9222 $ExtraArgs"
+[LowEnd]::Run($exe, $args2, [int[]]$cpus, $rate, $MemLimitMB, $Duration, $csv, "$here\stop", [int]$hog) | Out-Null
+Write-Output "wrote $csv"

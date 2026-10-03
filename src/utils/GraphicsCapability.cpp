@@ -58,6 +58,18 @@ namespace
     "rdpudd",
   };
 
+  /** Whether an adapter name is one of the no-driver fallbacks above. */
+  bool isBasicAdapter(const QString& name)
+  {
+    const QString lowered = name.toLower();
+    for (const char* marker : kBasicAdapters)
+    {
+      if (lowered.contains(QLatin1String(marker)))
+        return true;
+    }
+    return false;
+  }
+
   /**
    * Which display adapter Windows is using, without touching OpenGL.
    *
@@ -122,17 +134,7 @@ namespace
       if (!names.contains(name))
         names << name;
 
-      const QString lowered = name.toLower();
-      bool basic = false;
-      for (const char* marker : kBasicAdapters)
-      {
-        if (lowered.contains(QLatin1String(marker)))
-        {
-          basic = true;
-          break;
-        }
-      }
-      if (!basic)
+      if (!isBasicAdapter(name))
         sawReal = true;
     }
 
@@ -162,6 +164,52 @@ namespace
   }
 
 #endif // Q_OS_WIN
+
+  /**
+   * Pretend to be a smaller machine, for reproducing a report on a big one.
+   *
+   * The machines this file exists for are the ones nobody developing it owns,
+   * and the probe reads the real hardware, so a CPU-limited job object or a
+   * VM with the host's RAM still classifies as a workstation. This replaces
+   * what the probe *found* — before classify() runs, so every downstream
+   * decision follows exactly as it would on the real thing:
+   *
+   *   MAHFIN_SIMULATE_MACHINE="ram=4096;cores=2;adapter=Microsoft Basic Display Adapter"
+   *
+   * Any key may be left out. It says so in the log on every launch, because a
+   * forgotten environment variable quietly flattening the interface is the
+   * kind of bug that takes a day to find.
+   */
+  void applySimulation(GraphicsCapability::Info& info)
+  {
+    const QString spec = qEnvironmentVariable("MAHFIN_SIMULATE_MACHINE");
+    if (spec.isEmpty())
+      return;
+
+    for (const QString& part : spec.split(';', Qt::SkipEmptyParts))
+    {
+      const QString key = part.section('=', 0, 0).trimmed();
+      const QString value = part.section('=', 1).trimmed();
+      if (key == QLatin1String("ram"))
+        info.memoryMB = value.toULongLong();
+      else if (key == QLatin1String("cores"))
+        info.cores = value.toInt();
+      else if (key == QLatin1String("adapter"))
+      {
+        info.adapter = value;
+        info.probed = true;
+#ifdef Q_OS_WIN
+        info.softwareRenderer = isBasicAdapter(value);
+#endif
+        info.reasons.clear();
+        if (info.softwareRenderer)
+          info.reasons << QStringLiteral("the only display adapter is a basic Windows one (%1), so "
+                                         "there is no graphics driver and every pixel is drawn by "
+                                         "the processor").arg(value);
+      }
+    }
+    qWarning() << "MAHFIN_SIMULATE_MACHINE is set, probing a pretend machine:" << spec;
+  }
 
   void classify(GraphicsCapability::Info& info)
   {
@@ -239,6 +287,7 @@ const GraphicsCapability::Info& GraphicsCapability::probe()
   g_info.cores = QThread::idealThreadCount();
 #endif
 
+  applySimulation(g_info);
   g_info.reasons << g_forcedReasons;
 
   // classify() first, so the reasons it finds are recorded even when an
