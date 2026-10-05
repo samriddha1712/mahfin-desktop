@@ -6,7 +6,7 @@ if(APPLE)
   add_subdirectory(letsmove)
 endif(APPLE)
 
-if(USE_STATIC_MPVQT)
+if(USE_STATIC_MPVQT AND NOT MAHFIN_NATIVE_SHELL)
   # Build MpvQt directly from sources
   add_library(MpvQt STATIC
     mpvqt/src/mpvabstractitem.cpp

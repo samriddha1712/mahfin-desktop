@@ -2,7 +2,7 @@
 #define TASKBARCOMPONENT_H
 
 #include <QDebug>
-#include <QQuickWindow>
+#include <QWindow>
 #include "ComponentManager.h"
 
 class TaskbarComponent : public ComponentBase
@@ -18,10 +18,10 @@ public:
   bool componentInitialize() override { return true; }
   void componentPostInitialize() override {}
 
-  virtual void setWindow(QQuickWindow* window);
+  virtual void setWindow(QWindow* window);
 
 protected:
-  QQuickWindow* m_window;
+  QWindow* m_window;
 };
 
 #endif // TASKBARCOMPONENT_H

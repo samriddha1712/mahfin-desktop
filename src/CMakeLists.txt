@@ -108,7 +108,7 @@ if(NOT "${QTROOT}" STREQUAL "")
 endif()
 
 set(RESOURCE_ROOT .)
-if(NOT APPLE)
+if(NOT APPLE AND NOT MAHFIN_NATIVE_SHELL)
   set(rsrc_locations
     ${QTROOT}/resources
     /usr/share/qt/resources
@@ -152,16 +152,18 @@ if(APPLE AND MACOS_LAUNCH_WRAPPER)
   )
 endif()
 
-# QML module for AOT compilation (eliminates runtime qmlcache)
-set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml
-  PROPERTIES QT_RESOURCE_ALIAS webview.qml
-)
-qt_add_qml_module(${MAIN_TARGET}
-  URI Konvergo
-  VERSION 1.0
-  QML_FILES ${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml
-  NO_RESOURCE_TARGET_PATH
-)
+if(NOT MAHFIN_NATIVE_SHELL)
+  # QML module for AOT compilation (eliminates runtime qmlcache)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml
+    PROPERTIES QT_RESOURCE_ALIAS webview.qml
+  )
+  qt_add_qml_module(${MAIN_TARGET}
+    URI Konvergo
+    VERSION 1.0
+    QML_FILES ${CMAKE_CURRENT_SOURCE_DIR}/ui/webview.qml
+    NO_RESOURCE_TARGET_PATH
+  )
+endif()
 
 find_library(MINIZIP_LIBRARY minizip)
 if(WIN32)
@@ -189,10 +191,40 @@ else()
   endif()
 endif()
 
-if(USE_STATIC_MPVQT)
-  set(MPVQT_TARGET MpvQt)
+if(MAHFIN_NATIVE_SHELL)
+  set(MPVQT_TARGET "")
+  set(SHELL_QT_LIBS Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Xml Qt6::WebChannel Qt6::Network)
+
+  # The WebView2 SDK: headers and the static loader, so there is no extra DLL
+  # to ship. CI unpacks the NuGet package; locally `build/packages` is searched.
+  set(WEBVIEW2_DIR "" CACHE PATH "Microsoft.Web.WebView2 NuGet package's build/native directory")
+  if(NOT WEBVIEW2_DIR)
+    file(GLOB _wv2_candidates
+      "${CMAKE_BINARY_DIR}/packages/Microsoft.Web.WebView2.*/build/native"
+      "${CMAKE_SOURCE_DIR}/build/packages/Microsoft.Web.WebView2.*/build/native")
+    if(_wv2_candidates)
+      list(SORT _wv2_candidates)
+      list(GET _wv2_candidates -1 WEBVIEW2_DIR)
+    endif()
+  endif()
+  if(NOT EXISTS "${WEBVIEW2_DIR}/include/WebView2.h")
+    message(FATAL_ERROR "WebView2 SDK not found. Unpack the Microsoft.Web.WebView2 NuGet package and pass -DWEBVIEW2_DIR=<package>/build/native")
+  endif()
+  message(STATUS "WebView2 SDK: ${WEBVIEW2_DIR}")
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64")
+    set(_wv2_arch arm64)
+  else()
+    set(_wv2_arch x64)
+  endif()
+  target_include_directories(jmp_core PUBLIC "${WEBVIEW2_DIR}/include")
+  target_link_libraries(jmp_core "${WEBVIEW2_DIR}/${_wv2_arch}/WebView2LoaderStatic.lib" version.lib shlwapi.lib)
 else()
-  set(MPVQT_TARGET MpvQt::MpvQt)
+  set(SHELL_QT_LIBS Qt6::Core Qt6::Quick Qt6::Widgets Qt6::WebEngineQuick Qt6::WebEngineCore Qt6::OpenGL Qt6::Xml Qt6::Gui)
+  if(USE_STATIC_MPVQT)
+    set(MPVQT_TARGET MpvQt)
+  else()
+    set(MPVQT_TARGET MpvQt::MpvQt)
+  endif()
 endif()
 
 # Link core library with all dependencies
@@ -208,14 +240,7 @@ target_link_libraries(jmp_core
   ${CMAKE_THREAD_LIBS_INIT}
   ${RPI_LIBS}
   ${MINIZIP_LIBS}
-  Qt6::Core
-  Qt6::Quick
-  Qt6::Widgets
-  Qt6::WebEngineQuick
-  Qt6::WebEngineCore
-  Qt6::OpenGL
-  Qt6::Xml
-  Qt6::Gui
+  ${SHELL_QT_LIBS}
   ${MPVQT_TARGET}
 )
 

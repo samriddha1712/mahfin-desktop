@@ -41,7 +41,12 @@ endif()
 set(REQUIRED_QT_VERSION "6.0.0")
 
 set(QTCONFIGROOT ${QTROOT}/lib/cmake/Qt6)
-set(components Core Network WebChannel Qml Quick Xml WebEngineQuick WebEngineCore Widgets OpenGL)
+if(MAHFIN_NATIVE_SHELL)
+  # No QML, no scene graph, no Chromium of Qt's own: the page is WebView2's.
+  set(components Core Gui Network WebChannel Xml Widgets)
+else()
+  set(components Core Network WebChannel Qml Quick Xml WebEngineQuick WebEngineCore Widgets OpenGL)
+endif()
 
 if(UNIX AND (NOT APPLE) AND ((NOT BUILD_TARGET STREQUAL "RPI")))
   set(components ${components} Gui)
@@ -84,7 +89,9 @@ endif(QT6_CFLAGS)
 message(STATUS "Qt version: ${Qt6Core_VERSION}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${QT6_CFLAGS}")
 
-set(CMAKE_REQUIRED_INCLUDES ${Qt6WebEngineCore_INCLUDE_DIRS};${Qt6WebEngineCore_PRIVATE_INCLUDE_DIRS})
+if(NOT MAHFIN_NATIVE_SHELL)
+  set(CMAKE_REQUIRED_INCLUDES ${Qt6WebEngineCore_INCLUDE_DIRS};${Qt6WebEngineCore_PRIVATE_INCLUDE_DIRS})
+endif()
 set(CMAKE_REQUIRED_LIBRARIES ${QT6_LIBRARIES})
 
 include(CheckCXXSourceCompiles)

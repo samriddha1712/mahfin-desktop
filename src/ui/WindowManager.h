@@ -2,8 +2,6 @@
 #define WINDOWMANAGER_H
 
 #include <QObject>
-#include <QQuickItem>
-#include <QQuickWindow>
 #include <QRect>
 #include <QScreen>
 #include <QTimer>
@@ -13,6 +11,9 @@
 #define WEBUI_MAX_HEIGHT 1440.0
 #define WEBUI_SIZE QSize(1280, 720)
 #define WINDOWW_MIN_SIZE QSize(213, 120)
+
+class QQuickItem;
+class WebViewHost;
 
 class WindowManager : public ComponentBase
 {
@@ -30,7 +31,12 @@ public:
   void componentPostInitialize() override;
 
   // Called from main.cpp after window created
-  void initializeWindow(QQuickWindow* window);
+  void initializeWindow(QWindow* window);
+
+#ifdef MAHFIN_NATIVE_SHELL
+  // The web page of the Windows shell, which owns zoom and the pointer there.
+  void setWebViewHost(WebViewHost* host);
+#endif
 
   // Always on top
   Q_INVOKABLE void setAlwaysOnTop(bool enable);
@@ -111,8 +117,11 @@ private:
 
   void applyCursorVisibility();
 
-  QQuickWindow* m_window;
+  QWindow* m_window;
   QQuickItem* m_webView;
+#ifdef MAHFIN_NATIVE_SHELL
+  WebViewHost* m_webViewHost = nullptr;
+#endif
   bool m_enforcingZoom;
   QString m_currentScreenName;
   int m_ignoreFullscreenSettingsChange;

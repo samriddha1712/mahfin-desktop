@@ -3,9 +3,11 @@
 
 #include <QObject>
 #include <QMap>
+#include <QWebChannel>
+#ifndef MAHFIN_NATIVE_SHELL
 #include <QQmlContext>
 #include <QQmlPropertyMap>
-#include <QWebChannel>
+#endif
 
 #include "utils/Utils.h"
 
@@ -29,7 +31,9 @@ class ComponentManager : public QObject
 
 public:
   void initialize();
+#ifndef MAHFIN_NATIVE_SHELL
   inline QQmlPropertyMap &getQmlPropertyMap() { return m_qmlProperyMap; }
+#endif
   void setWebChannel(QWebChannel* webChannel);
 
 private:
@@ -37,7 +41,9 @@ private:
   void registerComponent(ComponentBase* comp);
 
   QMap<QString, ComponentBase*> m_components;
+#ifndef MAHFIN_NATIVE_SHELL
   QQmlPropertyMap m_qmlProperyMap;
+#endif
 };
 
 #endif

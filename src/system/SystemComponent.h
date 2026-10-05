@@ -53,6 +53,9 @@ public:
   static QString extractBaseUrl(const QString& url);
   void resolveUrl(const QString& url, std::function<void(const QString&)> callback);
 
+  // The browser engine's version (WebView2 on Windows), for the user agent.
+  void setBrowserEngineVersion(const QString& version) { m_browserEngineVersion = version; }
+
   Q_INVOKABLE QString getUserAgent();
 
   Q_INVOKABLE QString debugInformation();
@@ -125,6 +128,8 @@ signals:
   void scaleChanged(qreal scale);
 
 private:
+  QString m_browserEngineVersion;
+
   explicit SystemComponent(QObject* parent = nullptr);
   static QMap<QString, QString> networkInterfaces();
 

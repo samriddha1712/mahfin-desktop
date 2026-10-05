@@ -2,12 +2,39 @@ set(PROJECT_SOURCE_DIR @PROJECT_SOURCE_DIR@)
 set(QTROOT "@QTROOT@")
 
 message(STATUS "Running windeployqt from: ${QTROOT}/bin/windeployqt.exe")
-message(STATUS "Target: ${CMAKE_INSTALL_PREFIX}/Mahfin Desktop.exe")
+message(STATUS "Target: ${CMAKE_INSTALL_PREFIX}/Mahfin.exe")
 
+if(@DO_NATIVE_SHELL@)
+  # The WebView2 shell has no QML and no OpenGL: nothing for --qmldir to find,
+  # and no software OpenGL fallback (opengl32sw.dll) to carry around.
+  # QtWebChannel links Qt6Qml (for QJSValue), which is all of QML that is needed;
+  # its debugging plugins would drag Qt Quick and OpenGL back in.
+  set(WINDEPLOYQT_ARGS --no-quick-import --no-opengl-sw --no-translations --skip-plugin-types qmltooling)
+else()
+  set(WINDEPLOYQT_ARGS --qmldir @SOURCE_ROOT@/src/ui)
+endif()
 execute_process(
-  COMMAND "${QTROOT}/bin/windeployqt.exe" --verbose 9 --qmldir @SOURCE_ROOT@/src/ui "${CMAKE_INSTALL_PREFIX}/Mahfin Desktop.exe"
+  COMMAND "${QTROOT}/bin/windeployqt.exe" --verbose 9 ${WINDEPLOYQT_ARGS} "${CMAKE_INSTALL_PREFIX}/Mahfin.exe"
   RESULT_VARIABLE WINDEPLOYQT_RESULT
 )
+
+if(@DO_NATIVE_SHELL@)
+  # Microsoft's WebView2 bootstrapper (about 2MB). The installer runs it only
+  # on the rare machine without the Evergreen runtime (Windows 10 that never
+  # got it from Edge); Windows 11 always has it.
+  set(WV2_BOOTSTRAPPER "@PROJECT_SOURCE_DIR@/deps/MicrosoftEdgeWebview2Setup.exe")
+  if(NOT EXISTS "${WV2_BOOTSTRAPPER}")
+    file(DOWNLOAD "https://go.microsoft.com/fwlink/p/?LinkId=2124703" "${WV2_BOOTSTRAPPER}" STATUS WV2_STATUS TLS_VERIFY ON)
+    list(GET WV2_STATUS 0 WV2_CODE)
+    if(NOT WV2_CODE EQUAL 0)
+      file(REMOVE "${WV2_BOOTSTRAPPER}")
+      message(WARNING "Could not download the WebView2 bootstrapper: ${WV2_STATUS}")
+    endif()
+  endif()
+  if(EXISTS "${WV2_BOOTSTRAPPER}")
+    file(INSTALL "${WV2_BOOTSTRAPPER}" DESTINATION "${CMAKE_INSTALL_PREFIX}")
+  endif()
+endif()
 
 if(NOT WINDEPLOYQT_RESULT EQUAL 0)
   message(FATAL_ERROR "windeployqt failed with exit code: ${WINDEPLOYQT_RESULT}")
@@ -27,7 +54,7 @@ endforeach()
 get_filename_component(CEC_DIR @CEC_LIBRARY@ DIRECTORY)
 list(APPEND SEARCHDIRS ${CEC_DIR})
 
-# fixup_bundle("${CMAKE_INSTALL_PREFIX}/Mahfin Desktop.exe" "" "${SEARCHDIRS}")
+# fixup_bundle("${CMAKE_INSTALL_PREFIX}/Mahfin.exe" "" "${SEARCHDIRS}")
 #install(PROGRAMS ${VCREDIST_DIR}/vcredist_msvc2017_x64.exe DESTINATION .)
 
 # Install MPV DLL (MPV_LIBRARY points to .lib, we need the .dll)

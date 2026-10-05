@@ -13,10 +13,13 @@
 #include "ComponentManager.h"
 #include "settings/SettingsSection.h"
 
-#include "MpvVideoItem.h"
 #include "AlbumArtProvider.h"
 #include "input/InputComponent.h"
+#ifndef MAHFIN_NATIVE_SHELL
+#include "MpvVideoItem.h"
 #include <MpvController>
+#include <QQuickWindow>
+#endif
 
 #include <math.h>
 #include <string.h>
@@ -53,9 +56,11 @@ PlayerComponent::PlayerComponent(QObject* parent)
   m_videoRectangle(-1, 0, 0, 0),
   m_albumArtProvider(new AlbumArtProvider(this))
 {
+#ifndef MAHFIN_NATIVE_SHELL
   qmlRegisterType<MpvVideoItem>("Konvergo", 1, 0, "MpvVideo"); // deprecated name
   qmlRegisterType<MpvVideoItem>("Konvergo", 1, 0, "KonvergoVideo");
   qmlRegisterType<MpvVideoItem>("Konvergo", 1, 0, "MpvVideoItem");
+#endif
 
   m_restoreDisplayTimer.setSingleShot(true);
   connect(&m_restoreDisplayTimer, &QTimer::timeout, this, &PlayerComponent::onRestoreDisplay);
@@ -75,7 +80,14 @@ void PlayerComponent::componentPostInitialize()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 PlayerComponent::~PlayerComponent()
 {
+#ifdef MAHFIN_NATIVE_SHELL
+  // Owned here. Destroyed before the window it draws into (the window outlives
+  // the components, which are torn down when the application object goes).
+  delete m_mpv;
+  m_mpv = nullptr;
+#else
   // m_mpv is owned by MpvVideoItem, don't access it here as it may be destroyed
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -87,13 +99,25 @@ bool PlayerComponent::componentInitialize()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+#ifdef MAHFIN_NATIVE_SHELL
+void PlayerComponent::initializeNativeMpv(QWindow* window)
+{
+  m_window = window;
+  m_mpv = NativeMpv::create(static_cast<quintptr>(window->winId()));
+  if (!m_mpv)
+    throw FatalException(tr("Failed to initialize mpv."));
+  initializeMpv();
+}
+#endif
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::initializeMpv()
 {
   if (!m_mpv)
     throw FatalException(tr("Failed to load mpv."));
 
-  // MpvQt already called mpv_initialize(), so mpv is ready
-  // Properties that needed to be set before init were set in MpvVideoItem constructor
+  // MpvQt (or NativeMpv::create) already called mpv_initialize(), so mpv is ready.
+  // Properties that needed to be set before init were set there.
 
   mpv_request_log_messages(m_mpv->mpv(), "terminal-default");
   m_mpv->setProperty("msg-level", "all=v");
@@ -235,6 +259,7 @@ void PlayerComponent::setVideoRectangle(int x, int y, int w, int h)
   }
 }
 
+#ifndef MAHFIN_NATIVE_SHELL
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setQtQuickWindow(QQuickWindow* window)
 {
@@ -249,9 +274,15 @@ void PlayerComponent::setQtQuickWindow(QQuickWindow* window)
   video->setPlayerComponent(this);
 }
 
+#endif
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void PlayerComponent::setWindow(QQuickWindow* window)
+void PlayerComponent::setWindow(QWindow* window)
 {
+#ifdef MAHFIN_NATIVE_SHELL
+  // mpv was given the window in initializeNativeMpv; nothing more to attach.
+  m_window = window;
+#else
   QString vo = "libmpv";
 
 #ifdef TARGET_RPI
@@ -271,7 +302,9 @@ void PlayerComponent::setWindow(QQuickWindow* window)
   // Don't set it here since m_mpv may be null (MpvQt not ready yet)
 
   if (vo == "libmpv")
-    setQtQuickWindow(window);
+    if (auto* quickWindow = qobject_cast<QQuickWindow*>(window))
+      setQtQuickWindow(quickWindow);
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -720,12 +753,17 @@ void PlayerComponent::handleMpvEvents()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setVideoOnlyMode(bool enable)
 {
+#ifdef MAHFIN_NATIVE_SHELL
+  if (m_setWebViewVisible)
+    m_setWebViewVisible(!enable);
+#else
   if (m_window)
   {
     QQuickItem *web = m_window->findChild<QQuickItem *>("web");
     if (web)
       web->setVisible(!enable);
   }
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1560,10 +1598,27 @@ void PlayerComponent::setVideoConfiguration()
    */
   if (modestMachine && settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "hardwareDecoding"))
     hardwareDecodingMode = "enabled";
+#ifdef MAHFIN_NATIVE_SHELL
+  /*
+   * The case for "copy" was OpenGL's: mpv had to get frames into a GL texture
+   * shared with the scene graph, and on Windows the interop for that is
+   * patchy, so frames went back to system memory and up again. Drawing with
+   * Direct3D 11 there is no interop to fail -- d3d11va decodes into textures
+   * the VO presents directly -- so the default means zero-copy on every
+   * machine, not only on the weak ones.
+   */
+  if (settingIsShippedDefault(SETTINGS_SECTION_VIDEO, "hardwareDecoding"))
+    hardwareDecodingMode = "enabled";
+#endif
   QString hwdecMode = "no";
   QString hwdecVTFormat = "no";
   if (hardwareDecodingMode == "enabled")
+#ifdef MAHFIN_NATIVE_SHELL
+    // Only the decoders mpv considers safe; d3d11va first on Windows.
+    hwdecMode = "auto-safe";
+#else
     hwdecMode = "auto";
+#endif
   else if (hardwareDecodingMode == "osx_compat")
   {
     hwdecMode = "auto";

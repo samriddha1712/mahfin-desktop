@@ -4,14 +4,17 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIcon>
-#include <QtQml>
 #include <optional>
 #include <Qt>
+#ifndef MAHFIN_NATIVE_SHELL
+#include <QtQml>
 #include <QtWebEngineQuick>
 #include <qtwebenginecoreglobal.h>
 #include <QtWebEngineCore/QWebEngineProfile>
 #include <QtWebEngineCore/QWebEngineScript>
+#endif
 #include <QCommandLineOption>
+#include <QCommandLineParser>
 #include <QDebug>
 #include <QSettings>
 #include <QDateTime>
@@ -22,16 +25,22 @@
 #include "Paths.h"
 #include "core/ProfileManager.h"
 #include "player/PlayerComponent.h"
+#ifndef MAHFIN_NATIVE_SHELL
 #include "player/OpenGLDetect.h"
+#endif
 #include "display/DisplayComponent.h"
 #include "Version.h"
 #include "settings/SettingsComponent.h"
 #include "settings/SettingsSection.h"
-#include "ui/EventFilter.h"
 #include "ui/WindowManager.h"
-#include "Globals.h"
 #include "ui/ErrorMessage.h"
+#ifdef MAHFIN_NATIVE_SHELL
+#include "ui/win/NativeShell.h"
+#else
+#include "ui/EventFilter.h"
+#include "Globals.h"
 #include "ui/NotificationPresenter.h"
+#endif
 #include "UniqueApplication.h"
 #include "utils/GraphicsCapability.h"
 #include "utils/Log.h"
@@ -159,7 +168,7 @@ int main(int argc, char *argv[])
   try
   {
     QCommandLineParser parser;
-    parser.setApplicationDescription("Mahfin Desktop");
+    parser.setApplicationDescription("Mahfin");
     parser.addVersionOption();
     parser.addOptions({{{"h", "help"},              "Show this help"},
                        {{"l", "licenses"},          "Show license information"},
@@ -248,16 +257,18 @@ int main(int argc, char *argv[])
       // Detect portable mode while QCoreApplication exists (needed for applicationDirPath)
       Paths::detectAndEnablePortableMode();
 
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) && !defined(MAHFIN_NATIVE_SHELL)
       // Disable pipeline cache in portable mode to avoid writing to user's AppData
       if (Paths::isPortableMode())
         qputenv("QSG_RHI_DISABLE_DISK_CACHE", "1");
 #endif
     }
 
+#ifndef MAHFIN_NATIVE_SHELL
     detectOpenGLEarly();
     QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+#endif
 
     if (parser.isSet("help"))
     {
@@ -607,8 +618,12 @@ int main(int argc, char *argv[])
     //
     // The numbers are Blink's own bitmasks from pointer_properties.h: pointer
     // fine = 1<<2, hover = 1<<1.
+#ifndef MAHFIN_NATIVE_SHELL
+    // (WebView2 is a real top-level Chromium view and works this out itself,
+    // including on touchscreens, where forcing "fine" would be wrong.)
     chromiumFlags << "--blink-settings=availablePointerTypes=4,primaryPointerType=4,"
                      "availableHoverTypes=2,primaryHoverType=2";
+#endif
 
     /*
      * Which way Chromium reaches the GPU, and what to do when the default way
@@ -651,7 +666,14 @@ int main(int argc, char *argv[])
     }
     else if (gpuBackend == "gl" || gpuBackend == "d3d11")
     {
+#ifdef MAHFIN_NATIVE_SHELL
+      // WebView2 composites on its own, with Direct3D 11; there is no OpenGL
+      // scene graph left to share a context with. Accepted so old shortcuts
+      // with the switch on them still start.
+      qInfo() << "--gpu-backend" << gpuBackend << "has no effect in the WebView2 shell";
+#else
       chromiumFlags << "--use-angle=" + gpuBackend;
+#endif
     }
     else if (gpuBackend != "default")
     {
@@ -712,6 +734,22 @@ int main(int argc, char *argv[])
     if (parser.isSet("ignore-certificate-errors"))
       chromiumFlags << "--ignore-certificate-errors";
 
+#ifdef MAHFIN_NATIVE_SHELL
+    NativeShell::Options nativeShellOptions;
+    // QtWebEngine took these from the environment; WebView2 takes them as the
+    // browser's arguments. The same list, worked out from the same probe.
+    chromiumFlags << "--autoplay-policy=no-user-gesture-required";
+    if (parser.isSet("remote-debugging-port"))
+    {
+      chromiumFlags << "--remote-debugging-port=" + parser.value("remote-debugging-port");
+      nativeShellOptions.devTools = true;
+    }
+#ifndef NDEBUG
+    nativeShellOptions.devTools = true;
+#endif
+    nativeShellOptions.ignoreCertificateErrors = parser.isSet("ignore-certificate-errors");
+    nativeShellOptions.browserArguments = chromiumFlags;
+#else
     if (!chromiumFlags.isEmpty())
     {
       // Whatever the user already put in the environment wins. Chromium takes
@@ -731,6 +769,7 @@ int main(int argc, char *argv[])
       qputenv("QTWEBENGINE_REMOTE_DEBUGGING", parser.value("remote-debugging-port").toUtf8());
 
     QtWebEngineQuick::initialize();
+#endif
     QApplication app(newArgc, newArgv);
 
 #if defined(Q_OS_WIN) 
@@ -745,6 +784,7 @@ int main(int argc, char *argv[])
     app.setDesktopFileName("online.mahfin.Mahfin");
 #endif
 
+#ifndef MAHFIN_NATIVE_SHELL
     // Configure default WebEngineProfile paths early (profile is already set)
     {
       QWebEngineProfile* defaultProfile = QWebEngineProfile::defaultProfile();
@@ -758,6 +798,7 @@ int main(int argc, char *argv[])
        */
       NotificationPresenter::install();
     }
+#endif
 
 #if defined(Q_OS_MAC) && defined(NDEBUG)
     PFMoveToApplicationsFolderIfNecessary();
@@ -793,7 +834,9 @@ int main(int argc, char *argv[])
     Q_UNUSED(signalManager);
 #endif
 
+#ifndef MAHFIN_NATIVE_SHELL
     detectOpenGLLate();
+#endif
 
     // Initialize all the components. This needs to be done
     // early since most everything else relies on it
@@ -809,6 +852,17 @@ int main(int argc, char *argv[])
 
     SettingsComponent::Get().setCommandLineValues(parser.optionNames());
 
+#ifdef MAHFIN_NATIVE_SHELL
+    if (!NativeShell::start(uniqueApp, nativeShellOptions))
+    {
+      // Nothing was drawn and nothing went wrong with the graphics: the guard
+      // must not send the next launch into safe mode.
+      if (QFile::exists(graphicsGuardPath))
+        QFile::remove(graphicsGuardPath);
+      delete uniqueApp;
+      return EXIT_FAILURE;
+    }
+#else
     // Set user agent now that SystemComponent is available
     QWebEngineProfile::defaultProfile()->setHttpUserAgent(SystemComponent::Get().getUserAgent());
 
@@ -895,6 +949,7 @@ int main(int argc, char *argv[])
       });
     });
     engine->load(QUrl(QStringLiteral("qrc:/webview.qml")));
+#endif
 
     /*
      * Twenty seconds of a responsive event loop is the all-clear.
@@ -924,7 +979,9 @@ int main(int argc, char *argv[])
       QFile::remove(graphicsGuardPath);
 
     delete uniqueApp;
+#ifndef MAHFIN_NATIVE_SHELL
     Globals::EngineDestroy();
+#endif
 
     return ret;
   }

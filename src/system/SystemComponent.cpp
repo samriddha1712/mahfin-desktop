@@ -21,7 +21,9 @@
 #include <QPointer>
 #include <functional>
 
+#ifndef MAHFIN_NATIVE_SHELL
 #include <QtWebEngineCore/qtwebenginecoreglobal.h>
+#endif
 
 #include "input/InputComponent.h"
 #include "SystemComponent.h"
@@ -433,7 +435,13 @@ QString SystemComponent::getUserAgent()
 {
   QString kernel = QSysInfo::kernelType();
   kernel[0] = kernel[0].toUpper();
-  QString chromeVersion = QString(qWebEngineChromiumVersion()).split('.').first() + ".0.0.0";
+#ifdef MAHFIN_NATIVE_SHELL
+  // WebView2's Chromium, set by main once the runtime has been found.
+  QString engineVersion = m_browserEngineVersion.isEmpty() ? QStringLiteral("0") : m_browserEngineVersion;
+#else
+  QString engineVersion = QString(qWebEngineChromiumVersion());
+#endif
+  QString chromeVersion = engineVersion.split('.').first() + ".0.0.0";
   QString userAgent = QString("MahfinDesktop/%1 (%2; %3) Chrome/%4")
     .arg(Version::GetVersionString())
     .arg(kernel)
@@ -561,7 +569,14 @@ QString SystemComponent::getNativeShellScript()
   clientData.insert("deviceName", QJsonValue::fromVariant(SettingsComponent::Get().getClientName()));
   clientData.insert("version", QJsonValue::fromVariant(Version::GetVersionString()));
   clientData.insert("userAgent", QJsonValue::fromVariant(getUserAgent()));
+#ifdef MAHFIN_NATIVE_SHELL
+  // The bundled pages are served from a virtual host (see WebViewHost), not
+  // from disk: a page on https cannot navigate to file:// in WebView2.
+  Q_UNUSED(path);
+  clientData.insert("scriptPath", QJsonValue::fromVariant(QStringLiteral("https://app.mahfin.invalid/web-client/extension")));
+#else
   clientData.insert("scriptPath", QJsonValue::fromVariant("file:///" + path));
+#endif
   QString defaultMode = SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "layout").toString();
 
   QFile flatpakOsFile {"/run/host/os-release"};

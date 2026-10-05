@@ -5,6 +5,8 @@ env:
   # using older version due to severe memory leak
   # https://qt-project.atlassian.net/browse/QTBUG-141377
   QT_VERSION: "6.9.3"
+  # The WebView2 SDK the Windows shell builds against (headers + static loader).
+  WEBVIEW2_VERSION: "1.0.4258.31"
 
 on:
   workflow_call:
@@ -31,7 +33,8 @@ jobs:
             vc_redist_arch: x64
             vcvars: vcvars64.bat
             machine: X64
-          # ARM64 disabled - requires qt webengine builds
+          # ARM64 disabled. QtWebEngine is no longer needed (the shell is
+          # WebView2, which has ARM64 builds); what is missing is an aarch64 libmpv.
           # - artifact: windows-arm64
           #   qt_arch: win64_msvc2022_arm64
           #   mpv_arch: aarch64
@@ -50,7 +53,8 @@ jobs:
         cache: true
         version: "${{ env.QT_VERSION }}"
         arch: "${{ matrix.qt_arch }}"
-        modules: "qtwebengine qtwebchannel qtpositioning"
+        # QtWebChannel only: the page is drawn by WebView2, not QtWebEngine.
+        modules: "qtwebchannel"
     - name: Install Inno Setup
       run: |
         choco install innosetup -y
@@ -67,6 +71,10 @@ jobs:
         mv libmpv-2.def mpv.def
         mv mpv.def libmpv.dll.a mpv/
         mv mpv build/
+        # The WebView2 SDK, from its NuGet package. CMake finds it in build/packages.
+        mkdir -p build/packages/Microsoft.Web.WebView2.${{ env.WEBVIEW2_VERSION }}
+        curl -L "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/${{ env.WEBVIEW2_VERSION }}/microsoft.web.webview2.${{ env.WEBVIEW2_VERSION }}.nupkg" > webview2.zip
+        7z x webview2.zip -obuild/packages/Microsoft.Web.WebView2.${{ env.WEBVIEW2_VERSION }}
         if [ -n "${{ matrix.mpv_arch_fallback }}" ]; then
           curl -L https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-${{ matrix.mpv_arch_fallback }}-${{ env.MPV_VERSION }}.7z/download > mpv-fallback.7z
           7z x mpv-fallback.7z -ompv-fallback-tmp
@@ -90,6 +98,8 @@ jobs:
         Copy-Item "$vsRedist\*.dll" deps/vcruntime/
         # Also grab VCRedist installer for optional system-wide install
         Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile deps/vc_redist.x64.exe
+        # WebView2 runtime bootstrapper, run by the installer only where the runtime is missing
+        Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile deps/MicrosoftEdgeWebview2Setup.exe
       shell: powershell
     - name: Build
       run: |
@@ -115,9 +125,9 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact }}-installer
-        path: ${{ github.workspace }}/build/MahfinDesktop-*.exe
+        path: ${{ github.workspace }}/build/Mahfin-*.exe
     - name: Archive portable ZIP
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact }}-portable
-        path: ${{ github.workspace }}/build/MahfinDesktop-*.zip
+        path: ${{ github.workspace }}/build/Mahfin-*.zip

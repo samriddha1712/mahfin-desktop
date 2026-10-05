@@ -5,7 +5,7 @@
 #include <QtCore/qglobal.h>
 #include <QVariant>
 #include <QSet>
-#include <QQuickWindow>
+#include <QWindow>
 #include <QTimer>
 #include <QTextStream>
 
@@ -16,7 +16,14 @@
 
 #include <mpv/client.h>
 
+#ifdef MAHFIN_NATIVE_SHELL
+#include "NativeMpv.h"
+using MpvClient = NativeMpv;
+#else
 class MpvController;
+using MpvClient = MpvController;
+class QQuickWindow;
+#endif
 class AlbumArtProvider;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -130,13 +137,22 @@ public:
 
   AlbumArtProvider* albumArtProvider() const { return m_albumArtProvider; }
 
-  void setMpvController(MpvController* controller) {
+#ifdef MAHFIN_NATIVE_SHELL
+  // Creates mpv drawing into this native window and initializes the player.
+  // Must run before the window's WebView2 child exists, so the web page ends
+  // up above mpv's own child window.
+  void initializeNativeMpv(QWindow* window);
+  // Hides or shows the web page above the video (setVideoOnlyMode).
+  void setWebViewVisibilityHandler(std::function<void(bool)> handler) { m_setWebViewVisible = std::move(handler); }
+#else
+  void setMpvController(MpvClient* controller) {
     if (!m_mpv)
       m_mpv = controller;
   }
+#endif
   void initializeMpv();
 
-  virtual void setWindow(QQuickWindow* window);
+  virtual void setWindow(QWindow* window);
 
   QString videoInformation() const;
 
@@ -233,7 +249,9 @@ private:
   // * viewOffset
   //
   void loadWithOptions(const QVariantMap& options);
+#ifndef MAHFIN_NATIVE_SHELL
   void setQtQuickWindow(QQuickWindow* window);
+#endif
   void updatePlaybackState();
   void handleMpvEvent(mpv_event *event);
   // Potentially switch the display refresh rate, and return true if the refresh rate
@@ -245,7 +263,10 @@ private:
   QVariantList findStreamsForURL(const QString &url);
   void reselectStream(const QVariant &streamSelection, MediaType target);
 
-  MpvController* m_mpv = nullptr;
+  MpvClient* m_mpv = nullptr;
+#ifdef MAHFIN_NATIVE_SHELL
+  std::function<void(bool)> m_setWebViewVisible;
+#endif
 
   State m_state;
   bool m_paused;
@@ -259,7 +280,7 @@ private:
   int m_lastBufferingPercentage;
   double m_lastPositionUpdate;
   qint64 m_playbackAudioDelay;
-  QQuickWindow* m_window;
+  QWindow* m_window;
   float m_mediaFrameRate;
   QTimer m_restoreDisplayTimer;
   QTimer m_reloadAudioTimer;

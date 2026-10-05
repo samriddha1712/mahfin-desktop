@@ -19,7 +19,7 @@ TaskbarComponent& TaskbarComponent::Get()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-void TaskbarComponent::setWindow(QQuickWindow* window)
+void TaskbarComponent::setWindow(QWindow* window)
 {
   m_window = window;
 }

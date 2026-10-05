@@ -32,7 +32,7 @@ TaskbarComponentWin::~TaskbarComponentWin()
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
-void TaskbarComponentWin::setWindow(QQuickWindow* window)
+void TaskbarComponentWin::setWindow(QWindow* window)
 {
   qDebug() << "Taskbar initialization started";
   TaskbarComponent::setWindow(window);

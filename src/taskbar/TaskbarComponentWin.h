@@ -13,7 +13,7 @@ class TaskbarComponentWin : public TaskbarComponent
 public:
   TaskbarComponentWin(): TaskbarComponent(nullptr) {}
   ~TaskbarComponentWin() override;
-  virtual void setWindow(QQuickWindow* window) override;
+  virtual void setWindow(QWindow* window) override;
 
 private:
   void onPauseClicked();

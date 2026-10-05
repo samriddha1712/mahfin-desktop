@@ -1,15 +1,15 @@
-; Mahfin Desktop Installer Script for Inno Setup
+; Mahfin Installer Script for Inno Setup
 ; Based on WiX configuration from JMP.wxs and Bundle.wxs
 ;
 ; NOTE: Media Feature Pack downloads for Windows N editions are not included in this
 ; Inno Setup version as they require MSU package handling that was specific to WiX Bundle.
 ; Users on Windows N editions will need to install Media Feature Pack manually if needed.
 
-#define MyAppName "Mahfin Desktop"
+#define MyAppName "Mahfin"
 #define MyAppVersion "@VERSION_STRING@"
 #define MyAppPublisher "mahfin.online"
 #define MyAppURL "https://mahfin.online"
-#define MyAppExeName "Mahfin Desktop.exe"
+#define MyAppExeName "Mahfin.exe"
 #define MyAppGUID "{{1db4acf0-c568-4138-aa4a-d48159b30b51}"
 #define DeployPath "@CMAKE_INSTALL_PREFIX@"
 
@@ -25,7 +25,7 @@ AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 AppComments=Mahfin desktop client
 AppContact={#MyAppPublisher}
-DefaultDirName={autopf}\Mahfin Desktop
+DefaultDirName={autopf}\Mahfin
 DisableProgramGroupPage=yes
 ; Require Windows 10 1903 or newer
 MinVersion=10.0.18362
@@ -34,7 +34,7 @@ ArchitecturesAllowed=x64compatible
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=.
-OutputBaseFilename=MahfinDesktop-{#MyAppVersion}-windows-x64
+OutputBaseFilename=Mahfin-{#MyAppVersion}-windows-x64
 SetupIconFile=@PROJECT_SOURCE_DIR@/bundle/win/mahfin.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
@@ -57,23 +57,61 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Main application files (exclude redist folder - handled separately)
-Source: "{#DeployPath}/*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "redist,redist/*,vc_redist.x64.exe"
+Source: "{#DeployPath}/*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "redist,redist/*,vc_redist.x64.exe,MicrosoftEdgeWebview2Setup.exe"
+; WebView2 bootstrapper - extracted only when the runtime is missing (see Code section)
+Source: "{#DeployPath}/MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall skipifsourcedoesntexist; Check: NeedsWebView2Runtime
+
 ; Bundled VC runtime DLLs - only copied if needed (see Code section)
 Source: "{#DeployPath}/redist/*.dll"; DestDir: "{app}"; Flags: ignoreversion; Check: NeedsBundledRuntime
 ; Bundled VCRedist installer - extracted to temp for potential system-wide install
 Source: "{#DeployPath}/vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: ignoreversion deleteafterinstall; Check: ShouldExtractVCRedist
 
+[InstallDelete]
+; Versions up to 1.0.9 drew with QtWebEngine and Qt Quick. Installing over one
+; must not leave ~200MB of the old engine behind next to the new shell.
+; The app was "Mahfin Desktop" until 1.1.0. Its executable and shortcuts go,
+; so the Start menu does not offer two entries, one of them broken.
+Type: files; Name: "{app}\Mahfin Desktop.exe"
+Type: files; Name: "{autoprograms}\Mahfin Desktop.lnk"
+Type: files; Name: "{autodesktop}\Mahfin Desktop.lnk"
+Type: files; Name: "{app}\QtWebEngineProcess.exe"
+Type: files; Name: "{app}\Qt6WebEngine*.dll"
+Type: files; Name: "{app}\Qt6Quick*.dll"
+Type: files; Name: "{app}\Qt6Qml*.dll"
+Type: files; Name: "{app}\Qt6OpenGL.dll"
+Type: files; Name: "{app}\Qt6Positioning.dll"
+Type: files; Name: "{app}\Qt6WebChannelQuick.dll"
+Type: files; Name: "{app}\opengl32sw.dll"
+Type: files; Name: "{app}\d3dcompiler_47.dll"
+Type: filesandordirs; Name: "{app}\qml"
+Type: filesandordirs; Name: "{app}\resources"
+Type: filesandordirs; Name: "{app}\translations\qtwebengine_locales"
+
 [Icons]
-Name: "{autoprograms}\Mahfin Desktop"; Filename: "{app}\{#MyAppExeName}"; Comment: "Mahfin desktop client"; WorkingDir: "{app}"
-Name: "{autodesktop}\Mahfin Desktop"; Filename: "{app}\{#MyAppExeName}"; Comment: "Mahfin desktop client"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\Mahfin"; Filename: "{app}\{#MyAppExeName}"; Comment: "Mahfin"; WorkingDir: "{app}"
+Name: "{autodesktop}\Mahfin"; Filename: "{app}\{#MyAppExeName}"; Comment: "Mahfin"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
+; Install the WebView2 runtime if this machine does not have it
+Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime..."; Flags: waituntilterminated; Check: NeedsWebView2Runtime
 ; Install VCRedist if downloaded
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /passive /norestart"; StatusMsg: "Installing Visual C++ Redistributable..."; Flags: waituntilterminated; Check: ShouldInstallVCRedist
 ; Launch app after install
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch Mahfin Desktop"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "Launch Mahfin"; Flags: nowait postinstall skipifsilent
 
 [Code]
+// The Evergreen WebView2 runtime registers its version under EdgeUpdate, per
+// machine or per user. Any version present is enough: it updates itself.
+function NeedsWebView2Runtime: Boolean;
+var
+  Version: String;
+begin
+  Result := not (
+    (RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')) or
+    (RegQueryStringValue(HKCU, 'Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) and (Version <> '') and (Version <> '0.0.0.0')));
+end;
+
 var
   RemoveUserData: Boolean;
   VCRedistNeeded: Boolean;
@@ -163,7 +201,7 @@ begin
     CacheDir := ExpandConstant('{localappdata}\cache\Mahfin Desktop');
 
     if DirExists(DataDir) or DirExists(CacheDir) then
-      RemoveUserData := MsgBox('Do you want to remove your Mahfin Desktop user data?',
+      RemoveUserData := MsgBox('Do you want to remove your Mahfin user data?',
                                mbConfirmation, MB_YESNO) = IDYES;
   end
   else if CurUninstallStep = usPostUninstall then

@@ -40,6 +40,6 @@ endif(IS_DIRECTORY ${DEPENDENCY_ROOT})
 
 find_package(Threads REQUIRED)
 
-if(NOT USE_STATIC_MPVQT)
+if(NOT USE_STATIC_MPVQT AND NOT MAHFIN_NATIVE_SHELL)
   find_package(MpvQt REQUIRED)
 endif()

@@ -6,7 +6,7 @@
 // This provides minimal stub implementations to allow compilation
 
 #include <QObject>
-#include <QQuickWindow>
+#include <QWindow>
 #include <QIcon>
 
 class QWinTaskbarProgress : public QObject

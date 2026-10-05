@@ -4,8 +4,8 @@
 
 #include "Log.h"
 
-#include <QtQml>
 #include <QGuiApplication>
+#include <QtCore>
 #include <iostream>
 
 #include "shared/Names.h"

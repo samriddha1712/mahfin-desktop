@@ -1,6 +1,4 @@
 #include <QObject>
-#include <QtQml>
-#include <qqmlwebchannel.h>
 #include <QDebug>
 
 #include "ComponentManager.h"
@@ -40,8 +38,10 @@ void ComponentManager::registerComponent(ComponentBase* comp)
     qInfo() << "Component:" << comp->componentName() << "inited";
     m_components[comp->componentName()] = comp;
 
+#ifndef MAHFIN_NATIVE_SHELL
     // define component as property for qml
     m_qmlProperyMap.insert(comp->componentName(), QVariant::fromValue(comp));
+#endif
   }
   else
   {

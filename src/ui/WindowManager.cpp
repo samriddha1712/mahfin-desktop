@@ -1,5 +1,4 @@
 #include "WindowManager.h"
-#include "core/Globals.h"
 #include "settings/SettingsComponent.h"
 #include "settings/SettingsSection.h"
 #include "player/PlayerComponent.h"
@@ -14,10 +13,16 @@
 #include <QGuiApplication>
 #include <QScreen>
 #include <QDebug>
-#include <QQmlProperty>
 
+#ifdef MAHFIN_NATIVE_SHELL
+#include "ui/win/WebViewHost.h"
+#else
+#include <QQmlProperty>
+#include <QQuickItem>
+#include <QQuickWindow>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
+#endif
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -57,7 +62,7 @@ void WindowManager::componentPostInitialize()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void WindowManager::initializeWindow(QQuickWindow* window)
+void WindowManager::initializeWindow(QWindow* window)
 {
   m_window = window;
 
@@ -89,12 +94,27 @@ void WindowManager::initializeWindow(QQuickWindow* window)
    * the page having to be well behaved. Focus leaves, the pointer comes back;
    * focus returns and the request still stands, so it goes away again.
    */
+#ifdef MAHFIN_NATIVE_SHELL
+  /*
+   * Keyboard focus lives in WebView2's child window, which Qt does not count
+   * as one of its own, so QWindow::isActive() reads false the whole time the
+   * page is being used. Whether this application is the one in front is the
+   * same question, answered from WM_ACTIVATEAPP instead.
+   */
+  connect(qApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state)
+  {
+    m_windowActive = (state == Qt::ApplicationActive);
+    applyCursorVisibility();
+  });
+  m_windowActive = (QGuiApplication::applicationState() == Qt::ApplicationActive);
+#else
   connect(m_window, &QWindow::activeChanged, this, [this]()
   {
     m_windowActive = m_window && m_window->isActive();
     applyCursorVisibility();
   });
   m_windowActive = m_window->isActive();
+#endif
 
   // Register host command for fullscreen toggle
   InputComponent::Get().registerHostCommand("fullscreen", this, "toggleFullscreen");
@@ -122,7 +142,7 @@ void WindowManager::initializeWindow(QQuickWindow* window)
   });
 
   // Connect to window visibility changes (for fullscreen tracking)
-  connect(m_window, &QQuickWindow::visibilityChanged,
+  connect(m_window, &QWindow::visibilityChanged,
           this, &WindowManager::onVisibilityChanged);
 
   // Separate handlers for size and position
@@ -150,20 +170,21 @@ void WindowManager::initializeWindow(QQuickWindow* window)
   connect(m_window, &QWindow::windowStateChanged, this, scheduleSizeSave);
 
   // Size tracking
-  connect(m_window, &QQuickWindow::widthChanged, this, scheduleSizeSave);
-  connect(m_window, &QQuickWindow::heightChanged, this, scheduleSizeSave);
+  connect(m_window, &QWindow::widthChanged, this, scheduleSizeSave);
+  connect(m_window, &QWindow::heightChanged, this, scheduleSizeSave);
 
   // Position tracking only on non-Wayland (Wayland compositor controls positioning)
   if (!isWayland())
   {
-    connect(m_window, &QQuickWindow::xChanged, this, schedulePositionSave);
-    connect(m_window, &QQuickWindow::yChanged, this, schedulePositionSave);
+    connect(m_window, &QWindow::xChanged, this, schedulePositionSave);
+    connect(m_window, &QWindow::yChanged, this, schedulePositionSave);
   }
 
   // Connect to application shutdown
   connect(qApp, &QGuiApplication::aboutToQuit,
           this, &WindowManager::saveGeometrySlot);
 
+#ifndef MAHFIN_NATIVE_SHELL
   // Find web view and connect to zoom changes
   m_webView = m_window->findChild<QQuickItem*>("web");
   if (m_webView)
@@ -171,6 +192,7 @@ void WindowManager::initializeWindow(QQuickWindow* window)
     connect(m_webView, SIGNAL(zoomFactorChanged()), this, SLOT(onZoomFactorChanged()));
     enforceZoom();
   }
+#endif
 
   m_infoTimer = new QTimer(this);
   m_infoTimer->setInterval(1000);
@@ -178,10 +200,25 @@ void WindowManager::initializeWindow(QQuickWindow* window)
   m_systemDebugInfo = SystemComponent::Get().debugInformation();
 
   connect(m_infoTimer, &QTimer::timeout, this, &WindowManager::updateDebugInfo);
-  connect(m_window, &QQuickWindow::beforeSynchronizing, this, &WindowManager::updateOpenGLInfo, static_cast<Qt::ConnectionType>(Qt::DirectConnection|Qt::SingleShotConnection));
+#ifndef MAHFIN_NATIVE_SHELL
+  if (auto* quickWindow = qobject_cast<QQuickWindow*>(m_window))
+    connect(quickWindow, &QQuickWindow::beforeSynchronizing, this, &WindowManager::updateOpenGLInfo, static_cast<Qt::ConnectionType>(Qt::DirectConnection|Qt::SingleShotConnection));
 
   QQmlProperty(m_window, "showDebugLayer").connectNotifySignal(this, SLOT(onShowDebugLayerChanged()));
+#endif
 }
+
+#ifdef MAHFIN_NATIVE_SHELL
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void WindowManager::setWebViewHost(WebViewHost* host)
+{
+  m_webViewHost = host;
+  enforceZoom();
+  // The page may have asked before WebView2 was there to carry it out.
+  m_cursorVisible = !m_cursorVisible;
+  applyCursorVisibility();
+}
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowManager::setAlwaysOnTop(bool enable)
@@ -306,10 +343,16 @@ void WindowManager::applyCursorVisibility()
 
   m_cursorVisible = visible;
 
+#ifdef MAHFIN_NATIVE_SHELL
+  // Qt's override cursor stops at WebView2's window; the page hides it in CSS.
+  if (m_webViewHost)
+    m_webViewHost->setCursorHidden(!visible);
+#else
   if (visible)
     qApp->restoreOverrideCursor();
   else
     qApp->setOverrideCursor(QCursor(Qt::BlankCursor));
+#endif
 
 #ifdef Q_OS_MAC
   // Only apply macOS global cursor hiding when cursor is inside window
@@ -518,7 +561,14 @@ void WindowManager::updateMainSectionSettings(const QVariantMap& values)
   {
     QString url = values["startupurl"].toString();
     if (!url.isEmpty())
+    {
+#ifdef MAHFIN_NATIVE_SHELL
+      if (m_webViewHost)
+        m_webViewHost->navigate(QUrl(url));
+#else
       m_window->setProperty("webUrl", url);
+#endif
+    }
   }
 
   // Browser zoom
@@ -987,6 +1037,7 @@ void WindowManager::onShowDebugLayerChanged() {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowManager::updateOpenGLInfo() {
   m_openglInfo = "";
+#ifndef MAHFIN_NATIVE_SHELL
   QOpenGLContext* glctx = QOpenGLContext::currentContext();
   if (glctx && glctx->isValid())
   {
@@ -1000,11 +1051,18 @@ void WindowManager::updateOpenGLInfo() {
     }
     m_openglInfo += "\n";
   }
+#endif
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void WindowManager::enforceZoom()
 {
+#ifdef MAHFIN_NATIVE_SHELL
+  // WebView2's zoom controls are switched off unless zoom is allowed (see
+  // WebViewHost); all that is left is putting an existing zoom back.
+  if (m_webViewHost && !SettingsComponent::Get().value(SETTINGS_SECTION_MAIN, "allowBrowserZoom").toBool())
+    m_webViewHost->setZoomFactor(1.0);
+#else
   if (!m_webView || m_enforcingZoom)
     return;
 
@@ -1019,4 +1077,5 @@ void WindowManager::enforceZoom()
       m_enforcingZoom = false;
     }
   }
+#endif
 }

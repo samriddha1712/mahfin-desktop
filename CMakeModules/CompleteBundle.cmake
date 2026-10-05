@@ -17,6 +17,12 @@ else()
   set(DO_ENABLE_ANGLE_DEP 0)
 endif()
 
+if(MAHFIN_NATIVE_SHELL)
+  set(DO_NATIVE_SHELL 1)
+else()
+  set(DO_NATIVE_SHELL 0)
+endif()
+
 if(SCRIPT)
   configure_file(${CMAKE_SOURCE_DIR}/CMakeModules/${SCRIPT}.cmake.in ${SCRIPT}.cmake @ONLY)
   install(SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/${SCRIPT}.cmake)

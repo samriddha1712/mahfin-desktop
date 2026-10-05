@@ -28,6 +28,22 @@ option(USE_STATIC_MPVQT "Build MpvQt from bundled submodule instead of using sys
 option(MACOS_LAUNCH_WRAPPER "Wrap macOS binary in a shell script to block DYLD_FRAMEWORK_PATH injection" OFF)
 option(COVERAGE "Gemerate test code coverage with gcov" OFF)
 
+# Windows draws with WebView2 and mpv's own Direct3D 11 window instead of
+# QtWebEngine and an OpenGL Qt Quick scene. See src/ui/win/WebViewHost.h.
+if(WIN32)
+  set(_native_shell_default ON)
+else()
+  set(_native_shell_default OFF)
+endif()
+option(MAHFIN_NATIVE_SHELL "Use the WebView2 + native mpv window shell (Windows only)" ${_native_shell_default})
+if(MAHFIN_NATIVE_SHELL)
+  if(NOT WIN32)
+    message(FATAL_ERROR "MAHFIN_NATIVE_SHELL is Windows only")
+  endif()
+  add_definitions(-DMAHFIN_NATIVE_SHELL)
+  message(STATUS "Using the WebView2 native shell")
+endif()
+
 if (NOT CHECK_FOR_UPDATES)
     add_definitions(-DDISABLE_UPDATE_CHECK)
 endif()

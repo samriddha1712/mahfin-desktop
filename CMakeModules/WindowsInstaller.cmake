@@ -37,7 +37,7 @@ else()
   set(INSTALLER_ARCH_STR x86)
 endif()
 
-set(INSTALLER_BASE_NAME "MahfinDesktop-${VERSION_STRING}-${INSTALLER_ARCH_STR}")
+set(INSTALLER_BASE_NAME "Mahfin-${VERSION_STRING}-${INSTALLER_ARCH_STR}")
 set(INSTALLER_OUTPUT_NAME "${INSTALLER_BASE_NAME}.exe")
 
 # Create the installer using Inno Setup
