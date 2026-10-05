@@ -1,5 +1,5 @@
 @echo off
-REM Mahfin Desktop - Windows dependency installer
+REM Mahfin - Windows dependency installer
 REM Run once to install all build dependencies
 
 setlocal EnableDelayedExpansion

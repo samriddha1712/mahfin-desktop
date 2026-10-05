@@ -1,5 +1,5 @@
 @echo off
-REM Mahfin Desktop - Run unit tests
+REM Mahfin - Run unit tests
 REM Run build.bat first
 
 setlocal

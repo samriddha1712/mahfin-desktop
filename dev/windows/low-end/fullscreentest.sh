@@ -31,4 +31,4 @@ node cdp.mjs eval "location.assign('$second'); 'next'" >/dev/null; sleep 2; play
 echo "  on $(node cdp.mjs eval 'location.pathname'): window is $(state)   (expected: FullScreen)"
 grep -E "Request fullscreen" "$log" | sed 's/.* - //' | tail -4
 
-touch stop; while tasklist | grep -qi "Mahfin Desktop"; do sleep 1; done; rm -f stop
+touch stop; while tasklist | grep -qi "Mahfin.exe"; do sleep 1; done; rm -f stop

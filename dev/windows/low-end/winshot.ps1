@@ -1,4 +1,4 @@
-# Captures the Mahfin Desktop window's own contents — including the native
+# Captures the Mahfin window's own contents — including the native
 # video under the page — even when other windows cover it. Nothing else on the
 # screen is captured.
 param([string]$Out = "$PSScriptRoot\out\window.png", [double]$Scale = 0.5)
@@ -13,7 +13,7 @@ public static class MahfinShot {
 }
 '@
 [MahfinShot]::SetProcessDPIAware() | Out-Null
-$p = Get-Process -Name 'Mahfin Desktop' -ErrorAction Stop | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+$p = Get-Process -Name 'Mahfin' -ErrorAction Stop | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
 $r = New-Object MahfinShot+R
 [MahfinShot]::GetClientRect($p.MainWindowHandle, [ref]$r) | Out-Null
 $bmp = New-Object System.Drawing.Bitmap ($r.Ri - $r.L), ($r.B - $r.T)

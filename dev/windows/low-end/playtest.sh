@@ -17,4 +17,4 @@ node cdp.mjs eval "(()=>{const v=document.querySelector('.mahfin-mpv-surface'); 
 log="$LOCALAPPDATA/Mahfin Desktop/profiles/a4bab4f497a2445682d089fd408403c2/logs/Mahfin Desktop.log"
 grep -E "graphics tier|VO: \[" "$log" | sed 's/.* - //' | tail -2
 awk -F, -v a="$t0" 'NR>1 && $1>a+20 {c+=$3; n++} END {if(n) printf "cpu during playback: %.0f%% of budget\n", c/n}' "$f"
-[ -n "$KEEP" ] || { touch stop; while tasklist | grep -qi "Mahfin Desktop"; do sleep 1; done; rm -f stop; }
+[ -n "$KEEP" ] || { touch stop; while tasklist | grep -qi "Mahfin.exe"; do sleep 1; done; rm -f stop; }

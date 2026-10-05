@@ -1,0 +1,6 @@
+# Only the source, the build script and the capture helper are kept.
+*
+!.gitignore
+!spike.cpp
+!build.bat
+!screenshot.ps1

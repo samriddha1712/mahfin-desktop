@@ -1,5 +1,5 @@
 @echo off
-REM Mahfin Desktop - Windows bundling script
+REM Mahfin - Windows bundling script
 REM Run build.bat first
 
 setlocal enabledelayedexpansion

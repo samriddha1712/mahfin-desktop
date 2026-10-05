@@ -1,4 +1,4 @@
-// Tiny CDP client for the page inside Mahfin Desktop (--remote-debugging-port=9222).
+// Tiny CDP client for the page inside Mahfin (--remote-debugging-port=9222).
 // node cdp.mjs eval "<expr>" | metrics | shot <file.png> | perf <seconds>
 import { writeFileSync } from 'node:fs';
 

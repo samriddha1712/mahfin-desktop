@@ -1,5 +1,5 @@
 @echo off
-REM Mahfin Desktop - Run built executable
+REM Mahfin - Run built executable
 REM Run build.bat first
 
 setlocal

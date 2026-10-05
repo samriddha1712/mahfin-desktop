@@ -1,5 +1,5 @@
 @echo off
-REM Mahfin Desktop - Common variables
+REM Mahfin - Common variables
 REM Sourced by other scripts
 
 REM Pinned to match .github/workflows/build-windows.yml. 6.10.x leaks memory
@@ -12,7 +12,7 @@ set SCRIPT_DIR=%~dp0
 for %%i in ("%SCRIPT_DIR%\..\..") do set "PROJECT_ROOT=%%~fi"
 set DEPS_DIR=%SCRIPT_DIR%deps
 set BUILD_DIR=%PROJECT_ROOT%\build
-set EXE_NAME=Mahfin Desktop.exe
+set EXE_NAME=Mahfin.exe
 
 REM === Find Visual Studio ===
 set VCVARS=
