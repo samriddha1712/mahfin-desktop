@@ -198,7 +198,9 @@ private:
             mpv_node_list *list = dst->u.list;
             if (list) {
                 for (int n = 0; n < list->num; n++) {
-                    delete[] list->keys[n];
+                    // Only maps have keys; an array's list->keys is null.
+                    if (list->keys)
+                        delete[] list->keys[n];
                     if (list->values)
                         free_node(&list->values[n]);
                 }
