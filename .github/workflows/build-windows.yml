@@ -62,7 +62,12 @@ jobs:
     - name: Install dependencies
       run: |
         mkdir build
-        curl -L https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-${{ matrix.mpv_arch }}-${{ env.MPV_VERSION }}.7z/download > mpv.7z
+        # SourceForge's mirrors drop connections part-way often enough to have
+        # failed a release (v1.1.0: "end of response with 26958421 bytes
+        # missing"). -f makes an error page fail instead of being saved as the
+        # archive, and the retries resume rather than giving up.
+        fetch() { curl -fL --retry 6 --retry-all-errors --retry-delay 10 -C - -o "$2" "$1"; }
+        fetch https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-${{ matrix.mpv_arch }}-${{ env.MPV_VERSION }}.7z/download mpv.7z
         7z x mpv.7z
         mkdir mpv
         mv include mpv
@@ -73,10 +78,10 @@ jobs:
         mv mpv build/
         # The WebView2 SDK, from its NuGet package. CMake finds it in build/packages.
         mkdir -p build/packages/Microsoft.Web.WebView2.${{ env.WEBVIEW2_VERSION }}
-        curl -L "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/${{ env.WEBVIEW2_VERSION }}/microsoft.web.webview2.${{ env.WEBVIEW2_VERSION }}.nupkg" > webview2.zip
+        fetch "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/${{ env.WEBVIEW2_VERSION }}/microsoft.web.webview2.${{ env.WEBVIEW2_VERSION }}.nupkg" webview2.zip
         7z x webview2.zip -obuild/packages/Microsoft.Web.WebView2.${{ env.WEBVIEW2_VERSION }}
         if [ -n "${{ matrix.mpv_arch_fallback }}" ]; then
-          curl -L https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-${{ matrix.mpv_arch_fallback }}-${{ env.MPV_VERSION }}.7z/download > mpv-fallback.7z
+          fetch https://sourceforge.net/projects/mpv-player-windows/files/libmpv/mpv-dev-${{ matrix.mpv_arch_fallback }}-${{ env.MPV_VERSION }}.7z/download mpv-fallback.7z
           7z x mpv-fallback.7z -ompv-fallback-tmp
           mkdir build/mpv-fallback
           mv mpv-fallback-tmp/libmpv-2.dll build/mpv-fallback/
