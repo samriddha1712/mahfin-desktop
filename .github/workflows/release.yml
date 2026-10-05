@@ -58,12 +58,12 @@ jobs:
           body: |
             Download the one for your machine and open it.
 
-            - **macOS** — `MahfinDesktop-*.dmg`. Apple has not notarised it, so
+            - **macOS** — `Mahfin-*.dmg`. Apple has not notarised it, so
               the first launch needs right-click → Open rather than a
               double-click, once.
-            - **Windows** — `MahfinDesktop-*.exe` to install, or the `.zip` to
+            - **Windows** — `Mahfin-*.exe` to install, or the `.zip` to
               run without installing.
-            - **Linux** — `MahfinDesktop-*.AppImage`. `chmod +x` it and run it.
+            - **Linux** — `Mahfin-*.AppImage`. `chmod +x` it and run it.
 
             The app connects to Mahfin and plays through mpv, which direct-plays
             the library rather than asking the server to transcode it.

@@ -14,4 +14,4 @@ if [ ! -d "${APP_PATH}" ]; then
     exit 1
 fi
 
-exec "${APP_PATH}/Contents/MacOS/Mahfin Desktop" ${1+"$@"}
+exec "${APP_PATH}/Contents/MacOS/Mahfin" ${1+"$@"}

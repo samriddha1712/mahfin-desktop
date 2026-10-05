@@ -51,7 +51,7 @@ func render(scale: CGFloat, to path: String) {
   accent.setFill()
   NSRect(x: 0, y: fromTop(5), width: W, height: 5).fill()
 
-  text("Install Mahfin Desktop", 27, .semibold, ink, x: 0, top: 46, width: W, align: .center)
+  text("Install Mahfin", 27, .semibold, ink, x: 0, top: 46, width: W, align: .center)
   text("Drag the app onto the Applications folder",
        14, .regular, muted, x: 0, top: 80, width: W, align: .center)
 

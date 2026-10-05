@@ -15,12 +15,12 @@ ErrorMessage::ErrorMessage(const QString& errorMessage, bool allowResetConfig)
   : QMessageBox(nullptr)
 {
   setIcon(Critical);
-  setText("Mahfin Desktop encountered a fatal error and must exit");
+  setText("Mahfin encountered a fatal error and must exit");
   setDetailedText(errorMessage);
   setInformativeText("Press help below to be redirected to our friendly support forums." \
                      "Press reset to reset configuration to the default and try again." \
                      "Press abort to exit.");
-  setWindowTitle("Mahfin Desktop Fatal Error!");
+  setWindowTitle("Mahfin Fatal Error!");
 
   auto exitButton = addButton(Abort);
   auto helpButton = addButton(Help);

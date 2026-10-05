@@ -52,7 +52,7 @@ jobs:
         cmake --build build --target install
     - name: Sign and create dmg
       run: |
-        APP="./build/output/Mahfin Desktop.app"
+        APP="./build/output/Mahfin.app"
 
         # Sign from the inside out, and not with --deep.
         #
@@ -96,23 +96,23 @@ jobs:
           fi
         fi
         ARCH=$(uname -m)
-        DMG_NAME="MahfinDesktop-${VERSION}-${ARCH}.dmg"
+        DMG_NAME="Mahfin-${VERSION}-${ARCH}.dmg"
         # --eula is the only thing the Finder shows on its own when a disk
         # image is opened. The app is ad-hoc signed, so its first launch is
         # refused, and the way past that is four steps deep in System Settings
         # — nobody finds it by accident and a README in the window goes unread.
         create-dmg \
-          --volname "Mahfin Desktop v${VERSION}" \
+          --volname "Mahfin v${VERSION}" \
           --eula bundle/osx/first-launch.txt \
           --no-internet-enable \
           --background bundle/osx/dmg-background.tiff \
           --window-size 700 520 \
           --icon-size 100 \
-          --icon "Mahfin Desktop.app" 170 195 \
+          --icon "Mahfin.app" 170 195 \
           --app-drop-link 530 195 \
-          "${DMG_NAME}" "./build/output/Mahfin Desktop.app"
+          "${DMG_NAME}" "./build/output/Mahfin.app"
     - name: Archive production artifacts
       uses: actions/upload-artifact@v7
       with:
         name: ${{ matrix.artifact }}
-        path: ${{ github.workspace }}/MahfinDesktop-*.dmg
+        path: ${{ github.workspace }}/Mahfin-*.dmg

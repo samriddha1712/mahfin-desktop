@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>online.mahfin.Mahfin</id>
-  <name>Mahfin Desktop</name>
+  <name>Mahfin</name>
   <summary>Mahfin desktop client</summary>
   <developer id="online.mahfin">
     <name>Mahfin</name>

@@ -45,13 +45,13 @@ DMG_NAME="MahfinDesktop-${VERSION}-${ARCH}.dmg"
 EULA_FILE="${PROJECT_ROOT}/bundle/osx/first-launch.txt"
 rm -f "${DMG_NAME}"
 create-dmg \
-    --volname "Mahfin Desktop v${VERSION}" \
+    --volname "Mahfin v${VERSION}" \
     --no-internet-enable \
     --eula "${EULA_FILE}" \
     --background "${PROJECT_ROOT}/bundle/osx/dmg-background.tiff" \
     --window-size 700 520 \
     --icon-size 100 \
-    --icon "Mahfin Desktop.app" 170 195 \
+    --icon "Mahfin.app" 170 195 \
     --app-drop-link 530 195 \
     "${DMG_NAME}" "${APP_BUNDLE}"
 

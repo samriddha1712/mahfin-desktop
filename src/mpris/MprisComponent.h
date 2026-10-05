@@ -34,7 +34,7 @@ public:
   bool fullscreen() const;
   void setFullscreen(bool value);
   bool hasTrackList() const { return false; }
-  QString identity() const { return "Mahfin Desktop"; }
+  QString identity() const { return "Mahfin"; }
   QString desktopEntry() const { return "online.mahfin.Mahfin"; }
   QStringList supportedUriSchemes() const { return QStringList(); }
   QStringList supportedMimeTypes() const { return QStringList(); }

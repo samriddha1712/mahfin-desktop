@@ -7,7 +7,7 @@ OUTPUT_DIR="${1:-$PROJECT_ROOT/build/appimage}"
 
 mkdir -p "$OUTPUT_DIR"
 
-echo "Building Mahfin Desktop AppImage..."
+echo "Building Mahfin AppImage..."
 docker build \
     -t mahfin-desktop-appimage \
     -f "$SCRIPT_DIR/Dockerfile" \
@@ -19,4 +19,4 @@ docker run --rm \
     mahfin-desktop-appimage
 
 echo ""
-echo "AppImage: $OUTPUT_DIR/MahfinDesktop-x86_64.AppImage"
+echo "AppImage: $OUTPUT_DIR/Mahfin-x86_64.AppImage"

@@ -9,18 +9,18 @@ Here is the way through. The first one works on every Mac.
 
 THE ONE-LINE WAY
 
-1. In the window that opens next, drag Mahfin Desktop onto the
+1. In the window that opens next, drag Mahfin onto the
    Applications folder.
 
 2. Open Terminal (press Command-Space, type Terminal, press Return),
    then paste this line exactly and press Return:
 
-       sudo xattr -cr "/Applications/Mahfin Desktop.app"
+       sudo xattr -cr "/Applications/Mahfin.app"
 
    It asks for your Mac password. Nothing appears on screen as you
    type it -- that is normal, not a stuck keyboard. Press Return.
 
-3. Open Mahfin Desktop from Applications. It opens.
+3. Open Mahfin from Applications. It opens.
 
 All that command does is remove the "downloaded from the internet"
 mark macOS attaches to the app. It changes nothing inside the app, and
@@ -29,30 +29,30 @@ you do it once per version.
 WITHOUT USING TERMINAL
 
 This route works on older versions of macOS. On recent ones the line
-about Mahfin Desktop never appears in Privacy & Security at all, so
+about Mahfin never appears in Privacy & Security at all, so
 there is nothing here to click and you need the command above instead.
 If you get to step 2 and find nothing, that is what has happened -- it
 is not you missing it.
 
 1. Drag the app onto Applications and open it from there. macOS will
-   say Mahfin Desktop "cannot be opened because Apple cannot check it
+   say Mahfin "cannot be opened because Apple cannot check it
    for malicious software", and offer Move to Trash or Done. Click
    DONE. Do not move it to the trash.
 
 2. Go to the Apple menu > System Settings > Privacy & Security and
    scroll down to the Security section. There will be a line saying
-   Mahfin Desktop was blocked, with an OPEN ANYWAY button next to it.
+   Mahfin was blocked, with an OPEN ANYWAY button next to it.
    Click it and enter your Mac password. Do this within an hour of
    step 1, or the line disappears and you have to try opening the app
    again to bring it back.
 
-3. Open Mahfin Desktop once more. This time the dialog has an OPEN
+3. Open Mahfin once more. This time the dialog has an OPEN
    ANYWAY button. Click it.
 
 WHY THIS HAPPENS
 
 Apple only waives the check for apps signed with a paid Apple Developer
-account. Mahfin Desktop is not, so macOS treats it the same as anything
+account. Mahfin is not, so macOS treats it the same as anything
 else it has not seen before. It is the same app either way; the only
 difference is whether Apple has been paid to vouch for it.
 

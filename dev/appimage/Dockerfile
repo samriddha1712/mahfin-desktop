@@ -149,6 +149,6 @@ RUN chmod +x /AppDir/AppRun
 # Build the AppImage
 RUN mkdir -p /output && \
     ARCH=x86_64 /opt/tools/appimagetool/AppRun --no-appstream \
-    /AppDir /output/MahfinDesktop-x86_64.AppImage
+    /AppDir /output/Mahfin-x86_64.AppImage
 
-CMD ["cp", "/output/MahfinDesktop-x86_64.AppImage", "/host-output/"]
+CMD ["cp", "/output/Mahfin-x86_64.AppImage", "/host-output/"]

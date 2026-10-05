@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${0}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEPS_DIR="${SCRIPT_DIR}/deps"
 BUILD_DIR="${PROJECT_ROOT}/build"
-APP_NAME="Mahfin Desktop.app"
+APP_NAME="Mahfin.app"
 
 # Setup runtime environment for Qt libs from aqt installation (unbundled dev build).
 # Call from run.sh / test.sh after sourcing this file.
