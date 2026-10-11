@@ -20,7 +20,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 # which is all a Swift app needs to call a C library.
 swiftc -O -whole-module-optimization \
   -target "${ARCH}-apple-macos12.0" \
-  -module-name Mahfin -parse-as-library \
+  -module-name Mahfin -parse-as-library -Xcc -DGL_SILENCE_DEPRECATION \
   -import-objc-header Sources/Bridging.h \
   -I "$BREW/include" -L "$BREW/lib" -lmpv \
   -framework AppKit -framework WebKit -framework OpenGL -framework QuartzCore \

@@ -177,7 +177,7 @@ final class MpvPlayer {
     /// The page may only restyle subtitles; mpv's command language can run
     /// programs, so nothing else passes (see shared/TrustedOrigins.h in the Qt shell).
     func userCommand(_ cmd: String) {
-        let allowed = #"^set (sub-scale|sub-pos|sub-back-color|sub-color|sub-border-color|sub-font-size|sub-ass-override) ("#[0-9A-Fa-f]{6,8}"|-?[0-9]{1,4}(\.[0-9]{1,4})?|scale|yes|no|force|strip)$"#
+        let allowed = ##"^set (sub-scale|sub-pos|sub-back-color|sub-color|sub-border-color|sub-font-size|sub-ass-override) ("#[0-9A-Fa-f]{6,8}"|-?[0-9]{1,4}(\.[0-9]{1,4})?|scale|yes|no|force|strip)$"##
         guard cmd.range(of: allowed, options: .regularExpression) != nil else {
             NSLog("userCommand: refused %@", String(cmd.prefix(80)))
             return
