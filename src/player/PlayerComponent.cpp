@@ -1,4 +1,5 @@
 #include "PlayerComponent.h"
+#include "shared/TrustedOrigins.h"
 #include <QString>
 #include <Qt>
 #include <QDir>
@@ -74,7 +75,7 @@ PlayerComponent::PlayerComponent(QObject* parent)
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::componentPostInitialize()
 {
-  InputComponent::Get().registerHostCommand("player", this, "userCommand");
+  InputComponent::Get().registerHostCommand("player", this, "hostCommand");
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1719,6 +1720,19 @@ void PlayerComponent::updateConfiguration()
 
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::userCommand(QString command)
+{
+  // Callable from the page, and mpv's command language can run programs.
+  // Only the subtitle styling the web app actually sends gets through.
+  if (!TrustedOrigins::isAllowedMpvCommand(command))
+  {
+    qWarning() << "userCommand: refused" << command.left(80);
+    return;
+  }
+  hostCommand(command);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::hostCommand(QString command)
 {
   QByteArray cmdUtf8 = command.toUtf8();
   mpv_command_string(m_mpv->mpv(), cmdUtf8.data());

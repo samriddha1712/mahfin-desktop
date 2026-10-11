@@ -64,6 +64,9 @@ public:
 
   Q_INVOKABLE void openExternalUrl(const QString& url);
 
+  // Whether the window may show this address (see shared/TrustedOrigins.h).
+  Q_INVOKABLE bool isTrustedUrl(const QString& url);
+
   Q_INVOKABLE void runUserScript(QString script);
 
   Q_INVOKABLE QString getNativeShellScript();

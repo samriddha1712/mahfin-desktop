@@ -331,7 +331,7 @@ Window
     settings.errorPageEnabled: false
     settings.localContentCanAccessRemoteUrls: true
     settings.localContentCanAccessFileUrls: true
-    settings.allowRunningInsecureContent: true
+    settings.allowRunningInsecureContent: false
     settings.playbackRequiresUserGesture: false
     profile.httpUserAgent: components.system.getUserAgent()
     profile.httpCacheType: WebEngineProfile.DiskHttpCache
@@ -429,6 +429,26 @@ Window
                           loadingInfo.errorString + " [" + loadingInfo.errorCode + "]</pre><br><br>" +
                           "Provide the <a target='_blank' href='file://"+ components.system.logFilePath + "'>logfile</a> as well."
       }
+    }
+
+    /*
+     * The window stays on Mahfin. Every page it shows gets the native bridge,
+     * and upstream let it follow any link or redirect, so one stray
+     * navigation handed a stranger's page the power to run programs here.
+     * Anything outside the trusted set is refused; a link the person clicked
+     * opens in their browser instead (http and https only — see
+     * openExternalUrl). Mahfin embeds no frames of its own, so frames are held
+     * to the same list.
+     */
+    onNavigationRequested: function(request)
+    {
+      const target = request.url.toString()
+      if (components.system.isTrustedUrl(target))
+        return
+      request.reject()
+      console.log("Blocked navigation to " + target)
+      if (request.isMainFrame && request.navigationType === WebEngineNavigationRequest.LinkClickedNavigation)
+        components.system.openExternalUrl(target)
     }
 
     onNewWindowRequested:

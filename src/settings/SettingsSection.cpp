@@ -1,5 +1,6 @@
 #include <QDebug>
 #include "SettingsSection.h"
+#include "shared/TrustedOrigins.h"
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 SettingsSection::SettingsSection(const QString& sectionID, quint8 platforms, int _orderIndex, QObject* parent)
@@ -38,6 +39,11 @@ void SettingsSection::setValues(const QVariant& values)
   {
     if (key.isEmpty())
       continue;
+    if (!TrustedOrigins::isAllowedSetting(m_sectionID, key, map[key]))
+    {
+      qWarning() << "Settings: refused" << m_sectionID << key;
+      continue;
+    }
 
     bool haveKey = m_values.contains(key);
     if (haveKey && m_values[key]->value() == map[key])
@@ -121,6 +127,11 @@ void SettingsSection::setValueNoSave(const QString& key, const QVariant& value)
 {
   if (key == "index" || !m_values.contains(key))
     return;
+  if (!TrustedOrigins::isAllowedSetting(m_sectionID, key, value))
+  {
+    qWarning() << "Settings: refused" << m_sectionID << key;
+    return;
+  }
 
   if (m_values[key]->value() == value)
     return;

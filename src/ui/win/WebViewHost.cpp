@@ -1,4 +1,5 @@
 #include "WebViewHost.h"
+#include "shared/TrustedOrigins.h"
 
 #include <QDebug>
 #include <QDesktopServices>
@@ -281,6 +282,17 @@ void WebViewHost::installHandlers()
 
   m_webView->add_WebMessageReceived(Callback<ICoreWebView2WebMessageReceivedEventHandler>(
       [self](ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) -> HRESULT {
+        // The bridge answers only Mahfin's own pages. Navigation is held to
+        // them below as well; this is the second lock, should a page ever get
+        // past the first (see shared/TrustedOrigins.h).
+        LPWSTR source = nullptr;
+        args->get_Source(&source);
+        const QString from = fromCoTask(source);
+        if (!TrustedOrigins::isTrusted(QUrl(from)))
+        {
+          qWarning() << "WebView2: ignored a bridge message from" << QUrl(from).host();
+          return S_OK;
+        }
         LPWSTR message = nullptr;
         if (self && SUCCEEDED(args->TryGetWebMessageAsString(&message)))
           self->m_transport->receive(fromCoTask(message));
@@ -293,7 +305,26 @@ void WebViewHost::installHandlers()
           return S_OK;
         LPWSTR uri = nullptr;
         args->get_Uri(&uri);
-        self->m_currentUrl = fromCoTask(uri);
+        const QString target = fromCoTask(uri);
+        /*
+         * The window stays on Mahfin; every page in it gets the native bridge.
+         * A link the person clicked opens in their browser instead (web
+         * addresses only), anything else is simply refused.
+         */
+        // about:/data: is this host's own error page (NavigateToString); the
+        // bridge still refuses to answer it, see WebMessageReceived above.
+        const QString scheme = QUrl(target).scheme();
+        if (!TrustedOrigins::isTrusted(QUrl(target)) && scheme != "about" && scheme != "data")
+        {
+          args->put_Cancel(TRUE);
+          BOOL userInitiated = FALSE;
+          args->get_IsUserInitiated(&userInitiated);
+          qWarning() << "WebView2: blocked navigation to" << QUrl(target).host();
+          if (userInitiated && TrustedOrigins::isSafeExternal(QUrl(target)))
+            QDesktopServices::openUrl(QUrl(target));
+          return S_OK;
+        }
+        self->m_currentUrl = target;
         self->m_loading = true;
         /*
          * A new document is a new page on the other end of the channel. Drop
@@ -352,6 +383,17 @@ void WebViewHost::installHandlers()
         return S_OK;
       }).Get(), &token);
 
+  // Frames are held to the same list; Mahfin embeds none of its own.
+  m_webView->add_FrameNavigationStarting(Callback<ICoreWebView2NavigationStartingEventHandler>(
+      [](ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) -> HRESULT {
+        LPWSTR uri = nullptr;
+        args->get_Uri(&uri);
+        const QUrl target(fromCoTask(uri));
+        if (!TrustedOrigins::isTrusted(target) && target.scheme() != "about")
+          args->put_Cancel(TRUE);
+        return S_OK;
+      }).Get(), &token);
+
   // window.open and target=_blank go to the system browser, as they did before.
   m_webView->add_NewWindowRequested(Callback<ICoreWebView2NewWindowRequestedEventHandler>(
       [](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) -> HRESULT {
@@ -359,7 +401,7 @@ void WebViewHost::installHandlers()
         LPWSTR uri = nullptr;
         args->get_Uri(&uri);
         const QUrl url(fromCoTask(uri));
-        if (url.scheme() == "http" || url.scheme() == "https" || url.scheme() == "mailto")
+        if (TrustedOrigins::isSafeExternal(url))
           QDesktopServices::openUrl(url);
         return S_OK;
       }).Get(), &token);

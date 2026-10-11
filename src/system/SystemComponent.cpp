@@ -32,6 +32,7 @@
 #include "settings/SettingsSection.h"
 #include "utils/GraphicsCapability.h"
 #include "Paths.h"
+#include "shared/TrustedOrigins.h"
 #include "core/ProfileManager.h"
 #include "Names.h"
 #include "utils/Utils.h"
@@ -503,7 +504,21 @@ QStringList SystemComponent::networkAddresses() const
 /////////////////////////////////////////////////////////////////////////////////////////
 void SystemComponent::openExternalUrl(const QString& url)
 {
-  QDesktopServices::openUrl(QUrl(url));
+  // Web pages only. Handed to the operating system, a file: URL or a custom
+  // scheme starts a program, and this is callable from the page.
+  const QUrl target(url);
+  if (!TrustedOrigins::isSafeExternal(target))
+  {
+    qWarning() << "openExternalUrl: refused" << target.scheme() << "URL";
+    return;
+  }
+  QDesktopServices::openUrl(target);
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+bool SystemComponent::isTrustedUrl(const QString& url)
+{
+  return TrustedOrigins::isTrusted(QUrl(url));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -655,6 +670,14 @@ QString SystemComponent::getNativeShellScript()
 void SystemComponent::fetchPageForCSPWorkaround(QString url)
 {
   qDebug() << "fetchPageForCSPWorkaround:" << url;
+
+  // The page gets the fetched text back, so this would read local files and
+  // LAN pages for anyone who could call it. Only Mahfin's own addresses.
+  if (!TrustedOrigins::isTrusted(url))
+  {
+    qWarning() << "fetchPageForCSPWorkaround: refused" << url;
+    return;
+  }
 
   QNetworkRequest request(url);
   request.setHeader(QNetworkRequest::UserAgentHeader, getUserAgent());

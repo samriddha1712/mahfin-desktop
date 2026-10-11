@@ -185,6 +185,9 @@ public Q_SLOTS:
   void updateConfiguration();
 
 private Q_SLOTS:
+  // The unrestricted form, for key maps read from local files. Private, so
+  // the web channel (which publishes public methods only) cannot reach it.
+  void hostCommand(QString command);
   void handleMpvEvents();
   void onRestoreDisplay();
   void onRefreshRateChange();
