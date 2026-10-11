@@ -3,7 +3,7 @@ name: macOS native
 # The native Mac app (macos/): AppKit + WKWebView + libmpv, replacing the Qt
 # build on macOS only. Its own tag line, `mac-v*`, so it never collides with
 # the Qt release (`v*`) that still builds Windows and Linux. A tag with a
-# pre-release suffix (mac-v1.2.0-beta.1) publishes a pre-release, which the
+# -beta or -rc suffix (mac-v1.2.0-beta.1) publishes a pre-release, which the
 # in-app update prompt ignores.
 
 on:
@@ -87,7 +87,7 @@ jobs:
       - uses: softprops/action-gh-release@v3
         with:
           files: dmgs/*.dmg
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
           name: Mahfin for Mac ${{ github.ref_name }}
           body: |
             The native Mac app: the system's own Safari engine for Mahfin, libmpv for playback.
