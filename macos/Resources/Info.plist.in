@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key><string>Mahfin</string>
+  <key>CFBundleDisplayName</key><string>Mahfin</string>
+  <key>CFBundleExecutable</key><string>Mahfin</string>
+  <key>CFBundleIdentifier</key><string>online.mahfin.mac</string>
+  <key>CFBundleIconFile</key><string>mahfin</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>@VERSION@</string>
+  <key>CFBundleVersion</key><string>@VERSION@</string>
+  <key>LSMinimumSystemVersion</key><string>12.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>LSApplicationCategoryType</key><string>public.app-category.entertainment</string>
+  <!-- Home streaming goes to lan.mahfin.online (a private address with a
+       real certificate); macOS 15+ asks before an app reaches the local
+       network, and this is the sentence it shows. -->
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>Mahfin streams straight from the home server when you are on the home network, so films do not use your internet data.</string>
+</dict>
+</plist>

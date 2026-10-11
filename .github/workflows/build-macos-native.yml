@@ -1,0 +1,86 @@
+name: macOS native
+
+# The native Mac app (macos/): AppKit + WKWebView + libmpv, replacing the Qt
+# build on macOS only. Its own tag line, `mac-v*`, so it never collides with
+# the Qt release (`v*`) that still builds Windows and Linux. A tag with a
+# pre-release suffix (mac-v1.2.0-beta.1) publishes a pre-release, which the
+# in-app update prompt ignores.
+
+on:
+  push:
+    tags: ['mac-v*']
+    branches: [main]
+    paths: ['macos/**', '.github/workflows/build-macos-native.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: macos-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install libmpv and the bundler
+        run: brew install mpv dylibbundler
+
+      - name: Build Mahfin.app
+        run: |
+          set -o pipefail
+          if [[ "$GITHUB_REF_NAME" == mac-v* ]]; then VERSION="${GITHUB_REF_NAME#mac-v}"; else VERSION="$(cat VERSION)-dev"; fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          VERSION="$VERSION" macos/build.sh 2>&1 | tee build.log
+
+      # Job logs need a GitHub login to read; annotations do not.
+      - name: Report why the build failed
+        if: failure()
+        run: |
+          grep -E "error:|warning: unre|Undefined symbols|ld: |FAILED" build.log | head -40 | while IFS= read -r line; do
+            echo "::error::${line//%/%25}"
+          done
+
+      - name: Disk image
+        run: |
+          STAGE="$(mktemp -d)"
+          cp -R macos/build/Mahfin.app "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          hdiutil create -volname "Mahfin" -srcfolder "$STAGE" -ov -format UDZO \
+            "Mahfin-${VERSION}-${{ matrix.arch }}.dmg"
+          ls -la Mahfin-*.dmg
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mahfin-mac-${{ matrix.arch }}
+          path: Mahfin-*.dmg
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/mac-v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dmgs
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dmgs/*.dmg
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          name: Mahfin for Mac ${{ github.ref_name }}
+          body: |
+            The native Mac app: the system's own Safari engine for Mahfin, libmpv for playback.
+            Apple silicon: the arm64 dmg. Intel: the x86_64 dmg.

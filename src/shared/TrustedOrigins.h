@@ -81,13 +81,13 @@ namespace TrustedOrigins
 
   /*
    * The only mpv commands the page needs: the subtitle styling the web app
-   * sets (sub-scale, sub-pos, sub-back-color). mpv's command language can
+   * sets (sub-scale, sub-pos, sub-back-color, sub-ass-override). mpv's command language can
    * also `run` programs, load scripts and write files, so nothing else passes.
    */
   inline bool isAllowedMpvCommand(const QString& command)
   {
     static const QRegularExpression allowed(
-      QStringLiteral(R"(^set (sub-scale|sub-pos|sub-back-color|sub-color|sub-border-color|sub-font-size) ("#[0-9A-Fa-f]{6,8}"|-?[0-9]{1,4}(\.[0-9]{1,4})?)$)"));
+      QStringLiteral(R"(^set (sub-scale|sub-pos|sub-back-color|sub-color|sub-border-color|sub-font-size|sub-ass-override) ("#[0-9A-Fa-f]{6,8}"|-?[0-9]{1,4}(\.[0-9]{1,4})?|scale|yes|no|force|strip)$)"));
     return allowed.match(command).hasMatch();
   }
 }
