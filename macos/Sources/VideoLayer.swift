@@ -20,6 +20,17 @@ final class VideoLayer: CAOpenGLLayer {
     private var renderContext: OpaquePointer?
     private var cglContext: CGLContextObj?
     private let renderLock = NSLock()
+    /*
+     * Frames are drawn here, off the main thread. Drawing on the main thread
+     * made the web page fight the video for it: scrolling the episode list and
+     * dragging the subtitle-size slider over a playing film were choppy, because
+     * every frame of video was rendered between their events. (IINA does the
+     * same: a dedicated queue that calls display().)
+     */
+    private let renderQueue = DispatchQueue(label: "online.mahfin.render", qos: .userInteractive)
+    /// Black instead of mpv's last frame: nothing is playing, or the next file
+    /// has not produced its first frame. Touched only under `renderLock`.
+    private var blank = true
 
     init(player: MpvPlayer) {
         self.player = player
@@ -101,17 +112,51 @@ final class VideoLayer: CAOpenGLLayer {
         mpv_render_context_set_update_callback(renderContext, { ctx in
             guard let ctx else { return }
             let layer = Unmanaged<VideoLayer>.fromOpaque(ctx).takeUnretainedValue()
-            DispatchQueue.main.async { layer.frameReady() }
+            layer.renderQueue.async { layer.frameReady() }
         }, Unmanaged.passUnretained(self).toOpaque())
     }
 
     // MARK: Drawing
 
+    /// On `renderQueue`: mpv has something new.
     private func frameReady() {
         guard let renderContext else { return }
         let flags = mpv_render_context_update(renderContext)
         if flags & UInt64(MPV_RENDER_UPDATE_FRAME.rawValue) != 0 {
-            setNeedsDisplay()
+            displayNow()
+        }
+    }
+
+    private func displayNow() {
+        CATransaction.begin()
+        display()
+        CATransaction.commit()
+    }
+
+    /*
+     * Back to black. Without this the layer kept the last frame of whatever
+     * played before — it showed behind the next film's intro animation, and
+     * through the page during the slide between pages, which read as a flicker.
+     * Called on stop and whenever a new file starts; the first frame of the
+     * new one clears it again.
+     */
+    func blankUntilNextFrame() {
+        renderQueue.async { [weak self] in
+            guard let self else { return }
+            self.renderLock.lock()
+            self.blank = true
+            self.renderLock.unlock()
+            self.displayNow()
+        }
+    }
+
+    func showFrames() {
+        renderQueue.async { [weak self] in
+            guard let self else { return }
+            self.renderLock.lock()
+            self.blank = false
+            self.renderLock.unlock()
+            self.displayNow()
         }
     }
 
@@ -130,8 +175,8 @@ final class VideoLayer: CAOpenGLLayer {
         glGetIntegerv(GLenum(GL_VIEWPORT), &viewport)
         let width = viewport[2], height = viewport[3]
 
-        guard let renderContext, width > 0, height > 0 else {
-            glClearColor(0, 0, 0, 1)
+        guard let renderContext, width > 0, height > 0, !blank else {
+            glClearColor(8.0 / 255, 8.0 / 255, 10.0 / 255, 1)
             glClear(GLbitfield(GL_COLOR_BUFFER_BIT))
             return
         }

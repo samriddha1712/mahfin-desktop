@@ -79,7 +79,12 @@
   Object.defineProperty(main, "fullscreen", {
     enumerable: true,
     get: () => fullscreen,
-    set: (v) => { post("window", "setFullscreen", [!!v]); },
+    // Answered at once, so the button changes on the click; the window's own
+    // notifications confirm it (or put it back) a moment later.
+    set: (v) => {
+      post("window", "setFullscreen", [!!v]);
+      window.__mahfinFullscreen(!!v);
+    },
   });
   Object.defineProperty(window, "__mahfinFullscreen", {
     value: (v) => {

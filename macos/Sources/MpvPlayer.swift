@@ -27,6 +27,9 @@ final class MpvPlayer {
 
     /// (signal name, arguments) for the page.
     var onSignal: ((String, [Any]) -> Void)?
+    /// false: show black (stopped, or the next file has no frame yet);
+    /// true: the current file's frames are ready to show.
+    var onVideoActive: ((Bool) -> Void)?
 
     private enum State { case idle, buffering, playing, paused }
     private var state: State = .idle
@@ -136,6 +139,7 @@ final class MpvPlayer {
 
     func load(url: String, options: [String: Any], audio: Any, subtitle: Any) {
         stop()
+        onVideoActive?(false)
         started = false
         lastPositionMs = -1
         pendingAudio = audio
@@ -160,6 +164,7 @@ final class MpvPlayer {
 
     func stop() {
         command(["stop"])
+        onVideoActive?(false)
     }
 
     func setVolume(_ v: Double) { set("volume", String(max(0, min(100, v)))) }
@@ -228,11 +233,13 @@ final class MpvPlayer {
             updateState()
         case MPV_EVENT_PLAYBACK_RESTART:
             started = true
+            onVideoActive?(true)
             updateState()
         case MPV_EVENT_END_FILE:
             let reason = e.data?.assumingMemoryBound(to: mpv_event_end_file.self).pointee
             started = false
             state = .idle
+            onVideoActive?(false)
             switch reason?.reason {
             case MPV_END_FILE_REASON_EOF:
                 emit("finished")

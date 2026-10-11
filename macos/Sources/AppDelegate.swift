@@ -27,6 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         player = MpvPlayer()
         videoView = VideoView(player: player)
+        player.onVideoActive = { [weak self] active in
+            guard let layer = self?.videoView?.videoLayer else { return }
+            if active { layer.showFrames() } else { layer.blankUntilNextFrame() }
+        }
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1280, height: 760),
@@ -35,7 +39,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.title = "Mahfin"
         window.minSize = NSSize(width: 640, height: 400)
         window.appearance = NSAppearance(named: .darkAqua)
-        window.backgroundColor = .black
+        // The page's own ground (#08080a), so nothing between layers ever shows
+        // as a different black.
+        window.backgroundColor = NSColor(srgbRed: 8 / 255, green: 8 / 255, blue: 10 / 255, alpha: 1)
         window.collectionBehavior = [.fullScreenPrimary]
         window.delegate = self
         window.setFrameAutosaveName("MahfinMainWindow")
@@ -69,6 +75,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: Fullscreen, reported to the page
 
+    // Reported as the transition *starts*, not after macOS's ~0.7 s animation:
+    // the player's fullscreen button waited for that and looked dead.
+    func windowWillEnterFullScreen(_ notification: Notification) { shell?.fullscreenChanged(true) }
+    func windowWillExitFullScreen(_ notification: Notification) { shell?.fullscreenChanged(false) }
     func windowDidEnterFullScreen(_ notification: Notification) { shell?.fullscreenChanged(true) }
     func windowDidExitFullScreen(_ notification: Notification) { shell?.fullscreenChanged(false) }
     func windowDidResignKey(_ notification: Notification) { shell?.setCursorVisible(true) }
