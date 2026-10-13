@@ -69,10 +69,23 @@ enum Theme {
         variable("Inter", size: size, weight: weight) ?? .systemFont(ofSize: size, weight: weight)
     }
 
-    /// Bricolage Grotesque, for headings and titles.
+    /// Bricolage Grotesque, for headings and titles. The web loads it at 400,
+    /// 600 and 800 only, so its "bold" headings render at 800: matched here.
     static func display(_ size: CGFloat, _ weight: NSFont.Weight = .bold) -> NSFont {
-        variable("Bricolage Grotesque", size: size, weight: weight) ?? .systemFont(ofSize: size, weight: weight)
+        let w: NSFont.Weight = weight.rawValue >= NSFont.Weight.bold.rawValue ? .heavy
+            : weight.rawValue >= NSFont.Weight.medium.rawValue ? .semibold : .regular
+        return variable("Bricolage Grotesque", size: size, weight: w) ?? .systemFont(ofSize: size, weight: weight)
     }
+
+    // MARK: Motion (globals.css)
+
+    /// "expo-out", cubic-bezier(0.22, 1, 0.36, 1): every lift, reveal and slide.
+    static let expoOut = CAMediaTimingFunction(controlPoints: 0.22, 1, 0.36, 1)
+    /// "spring", cubic-bezier(0.34, 1.56, 0.64, 1): pills, play marks, nudge buttons.
+    static let spring = CAMediaTimingFunction(controlPoints: 0.34, 1.56, 0.64, 1)
+    /// Tailwind's default transition curve, cubic-bezier(0.4, 0, 0.2, 1), 150 ms.
+    static let standard = CAMediaTimingFunction(controlPoints: 0.4, 0, 0.2, 1)
+    static let easeOut = CAMediaTimingFunction(controlPoints: 0, 0, 0.2, 1)
 
     private static var fontCache: [String: NSFont] = [:]
 

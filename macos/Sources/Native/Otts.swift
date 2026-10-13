@@ -39,24 +39,38 @@ struct Ott {
     }
 }
 
-/// A platform tile: its logo on a dark plate, 288 × 144 as on the web.
+/// A platform tile (OttCard.tsx): its logo on a gray-800 plate with a
+/// gray-700 ring; hovered, it grows 5% to a gray-700 plate and gray-500 ring
+/// over 300 ms. 288 × 144, as on the web at desktop width.
 @MainActor
 final class OttCell: FlippedView {
     static let size = NSSize(width: 288, height: 144)
+    private static let gray800 = Theme.rgb(0x1e2939), gray700 = Theme.rgb(0x364153)
+    private static let gray500 = Theme.rgb(0x6a7282), gray900 = Theme.rgb(0x101828)
+    private let plate = CALayer()
+    private let foot = ShadeLayer()
     private let logo = RemoteImage()
-    private let fallback = makeLabel(font: Theme.display(26, .heavy), color: Theme.palette.ink)
+    private let fallback = makeLabel(font: Theme.display(17, .bold), color: .white)
     var onOpen: (() -> Void)?
     private var tracking: NSTrackingArea?
+    private var hovering = false
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        layer?.backgroundColor = Theme.rgb(0x1f2937).cgColor
-        layer?.cornerRadius = 12
-        layer?.cornerCurve = .continuous
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.masksToBounds = false
+        plate.backgroundColor = OttCell.gray800.cgColor
+        plate.cornerRadius = 12
+        plate.cornerCurve = .continuous
+        plate.borderWidth = 1
+        plate.borderColor = OttCell.gray700.cgColor
+        plate.masksToBounds = true
+        plate.shadowOpacity = 0
+        foot.set([.clear, OttCell.gray900])
+        plate.addSublayer(foot)
         logo.layer.contentsGravity = .resizeAspect
-        layer?.addSublayer(logo.layer)
+        logo.layer.masksToBounds = false
+        plate.addSublayer(logo.layer)
+        layer?.addSublayer(plate)
         fallback.alignment = .center
         addSubview(fallback)
     }
@@ -64,20 +78,34 @@ final class OttCell: FlippedView {
 
     func configure(_ o: Ott, site: URL) {
         fallback.stringValue = o.short ?? o.name
-        fallback.isHidden = true
         logo.onLoad = { [weak self] in self?.fallback.isHidden = true }
-        logo.load(o.logoURL(site: site), points: 200, scale: window?.backingScaleFactor ?? 2)
-        // Shown until (unless) the logo arrives.
-        if logo.layer.contents == nil { fallback.isHidden = false }
+        logo.load(o.logoURL(site: site), points: 240, scale: window?.backingScaleFactor ?? 2)
+        fallback.isHidden = logo.layer.contents != nil
     }
 
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        logo.layer.frame = bounds.insetBy(dx: bounds.width * 0.18, dy: bounds.height * 0.24)
+        plate.bounds = CGRect(origin: .zero, size: bounds.size)
+        plate.position = CGPoint(x: bounds.midX, y: bounds.midY)
+        foot.frame = CGRect(x: 0, y: bounds.height - 40, width: bounds.width, height: 40)
+        // `p-6`: the logo fits inside 24 pt of padding.
+        logo.layer.frame = plate.bounds.insetBy(dx: 24, dy: 24)
         CATransaction.commit()
         let s = fallback.fitSize
         fallback.frame = NSRect(x: 0, y: (bounds.height - s.height) / 2, width: bounds.width, height: s.height)
+    }
+
+    private func setHover(_ on: Bool) {
+        hovering = on
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.3)
+        CATransaction.setAnimationTimingFunction(Theme.standard)
+        plate.transform = on ? CATransform3DMakeScale(1.05, 1.05, 1) : CATransform3DIdentity
+        plate.backgroundColor = (on ? OttCell.gray700 : OttCell.gray800).cgColor
+        plate.borderColor = (on ? OttCell.gray500 : OttCell.gray700).cgColor
+        CATransaction.commit()
+        foot.set([.clear, on ? OttCell.gray800 : OttCell.gray900])
     }
 
     override func updateTrackingAreas() {
@@ -87,12 +115,8 @@ final class OttCell: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) {
-        layer?.borderColor = Theme.palette.accent.withAlphaComponent(0.5).cgColor
-    }
-    override func mouseExited(with event: NSEvent) {
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
-    }
+    override func mouseEntered(with event: NSEvent) { setHover(true) }
+    override func mouseExited(with event: NSEvent) { setHover(false) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseUp(with event: NSEvent) {
         if bounds.contains(convert(event.locationInWindow, from: nil)) { onOpen?() }

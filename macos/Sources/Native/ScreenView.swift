@@ -46,8 +46,12 @@ class ScreenView: FlippedView {
     /// Subclasses lay their content out in `document` and set its height.
     func layoutDocument(width: CGFloat) {}
 
+    /// For pages with scroll-driven motion (the home page's hero).
+    func scrolled(to y: CGFloat) {}
+
     @objc private func didScroll() {
         let y = scroll.contentView.bounds.minY
+        scrolled(to: y)
         let now = y > 24
         if now != scrolled {
             scrolled = now
@@ -58,7 +62,33 @@ class ScreenView: FlippedView {
 
     var isScrolled: Bool { scrolled }
 
-    func refreshRows() { rows.forEach { $0.refreshVisibility() } }
+    func refreshRows() {
+        let clip = scroll.contentView.bounds
+        // The web's observer: `rootMargin: 0 0 -6% 0`, so a row reveals once its
+        // top is 6% above the bottom of the window.
+        let line = clip.maxY - clip.height * 0.06
+        for r in rows {
+            r.refreshVisibility()
+            r.revealIfNeeded(viewportBottom: line, in: document)
+        }
+    }
+
+    private var shownOnce = false
+
+    /// The page's own entrance (`.fade-in`: 0.35 s), the first time it appears
+    /// without a slide (a cold launch); the host's slide covers the rest.
+    func fadeInIfFirst() {
+        guard !shownOnce, let layer else { shownOnce = true; return }
+        shownOnce = true
+        let a = CABasicAnimation(keyPath: "opacity")
+        a.fromValue = 0
+        a.toValue = 1
+        a.duration = 0.35
+        a.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(a, forKey: "fade-in")
+    }
+
+    func markShown() { shownOnce = true }
 
     /// Shown again (back to this page): resume anything that runs on its own.
     func activate() { onScrolled?(scrolled) }

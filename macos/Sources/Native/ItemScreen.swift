@@ -25,9 +25,12 @@ final class ItemScreen: ScreenView {
     private let progressTrack = CALayer()
     private let progressFill = CALayer()
     private let progressLabel = makeLabel(font: Theme.text(12.5), color: Theme.palette.muted)
-    private let play = PillButton("Play", style: .accent, height: 48, fontSize: 16)
-    private let favorite = PillButton("My List", style: .glass, height: 48, fontSize: 15)
-    private let watched = PillButton("Mark watched", style: .glass, height: 48, fontSize: 15)
+    private let play = PillButton("Play", style: .accent, height: 46, fontSize: 15)
+    private let favorite = PillButton("My List", style: .glass, height: 46, fontSize: 15)
+    private let watched = PillButton("Mark watched", style: .glass, height: 46, fontSize: 15)
+    /// The poster's colour at 16%, laid over My List's glass (the web tints it
+    /// from the poster's blurhash).
+    private var tint: NSColor?
     private let overview = makeLabel(font: Theme.text(15), color: Theme.palette.ink.withAlphaComponent(0.8), lines: 0)
     private let studios = makeLabel(font: Theme.text(13), color: Theme.palette.muted)
     private let episodes: EpisodesView
@@ -65,6 +68,12 @@ final class ItemScreen: ScreenView {
         art.layer?.addSublayer(progressTrack)
         for v in [titleLabel, ticket, metaLabel, genresLabel, progressLabel, overview, studios] as [NSView] { document.addSubview(v) }
         play.icon = .play
+        for b in [play, favorite, watched] { b.radius = 12 }
+        poster.onLoad = { [weak self] in
+            guard let self, let img = self.poster.layer.contents as! CGImage? else { return }
+            self.tint = ImagePipeline.average(img)
+            self.refreshButtons()
+        }
         favorite.icon = .plus
         watched.icon = .check
         for b in [play, favorite, watched] { document.addSubview(b) }
@@ -178,7 +187,19 @@ final class ItemScreen: ScreenView {
         let fav = item.UserData?.IsFavorite == true
         favorite.title = fav ? "In My List" : "My List"
         favorite.icon = fav ? .check : .plus
+        let p = Theme.palette
+        if fav {
+            // In the list: the accent words, no tint, no hover.
+            favorite.style = .tinted(p.panel, p.panel, p.accent)
+        } else if let tint {
+            let rest = p.panel.blended(withFraction: 0.16, of: tint) ?? p.panel
+            favorite.style = .tinted(rest, NSColor.white.withAlphaComponent(0.1), p.ink)
+            favorite.border = p.glassBorder
+        } else {
+            favorite.style = .glass
+        }
         let seen = item.UserData?.Played == true
+        if seen { watched.style = .tinted(p.panel, p.panel, p.accent) } else { watched.style = .glass }
         watched.isHidden = !(item.Type == "Movie" || item.isSeries)
         watched.title = seen ? "Watched" : (item.isSeries ? "Mark all watched" : "Mark watched")
         needsLayout = true
@@ -276,10 +297,10 @@ final class ItemScreen: ScreenView {
         var bx = x
         for b in [play, favorite, watched] where !b.isHidden {
             b.sizeToFit()
-            b.frame = NSRect(x: bx, y: y, width: b.frame.width + (b === play ? 10 : 0), height: 48)
+            b.frame = NSRect(x: bx, y: y, width: b.frame.width + (b === play ? 10 : 0), height: 46)
             bx = b.frame.maxX + 12
         }
-        y += 48 + 26
+        y += 46 + 24
         let ov = overview.sizeThatFits(NSSize(width: colW, height: 1000))
         overview.frame = NSRect(x: x, y: y, width: colW, height: ov.height)
         y += ov.height + 10
@@ -322,7 +343,11 @@ final class EpisodesView: FlippedView {
     func load(seriesId: String, seriesName: String?, current: JFItem?) {
         self.seriesId = seriesId
         self.current = current
-        heading.stringValue = current != nil ? "All episodes of \(seriesName ?? "")" : "Episodes"
+        // Only an episode's page names the show above its seasons (the web's).
+        heading.attributedStringValue = NSAttributedString(string: "All episodes of \(seriesName ?? "")", attributes: [
+            .font: Theme.display(20, .bold), .foregroundColor: Theme.palette.ink, .kern: -0.5,
+        ])
+        heading.isHidden = current == nil
         let api = ctx.api
         Task { [weak self] in
             await api.load(JFItems.self, .jellyfin, "Shows/\(seriesId)/Seasons", [
@@ -366,7 +391,11 @@ final class EpisodesView: FlippedView {
     private func buildSeasonButtons() {
         seasonButtons.forEach { $0.removeFromSuperview() }
         seasonButtons = seasons.map { s in
-            let b = PillButton(s.Name ?? "Season", style: s.Id == selected ? .accent : .outline, height: 36, fontSize: 13.5)
+            // Selected: the accent. Others: `glass-soft`, words at 80%.
+            let b = PillButton(s.Name ?? "Season", style: s.Id == selected ? .accent
+                : .tinted(Theme.palette.glass, NSColor.white.withAlphaComponent(0.1), Theme.palette.ink.withAlphaComponent(0.8)),
+                height: 36, fontSize: 13.5)
+            if s.Id != selected { b.border = Theme.palette.glassBorder }
             b.action = { [weak self] in
                 self?.selected = s.Id
                 self?.buildSeasonButtons()
@@ -378,8 +407,10 @@ final class EpisodesView: FlippedView {
         needsLayout = true
     }
 
+    private var top: CGFloat { heading.isHidden ? 0 : 44 }
+
     func height(for width: CGFloat) -> CGFloat {
-        RowView.headerHeight + 36 + 20 + CGFloat(rows.count) * (EpisodeRow.height + 12)
+        top + 36 + 16 + CGFloat(rows.count) * (EpisodeRow.height + 4)
     }
 
     override func layout() {
@@ -389,70 +420,133 @@ final class EpisodesView: FlippedView {
         var x = inset
         for b in seasonButtons {
             b.sizeToFit()
-            b.frame = NSRect(x: x, y: RowView.headerHeight, width: b.frame.width, height: 36)
+            b.frame = NSRect(x: x, y: top, width: b.frame.width, height: 36)
             x = b.frame.maxX + 8
         }
-        var y = RowView.headerHeight + 36 + 20
+        var y = top + 36 + 16
         for r in rows {
-            r.frame = NSRect(x: inset, y: y, width: bounds.width - inset * 2, height: EpisodeRow.height)
-            y += EpisodeRow.height + 12
+            r.frame = NSRect(x: inset - 10, y: y, width: bounds.width - inset * 2 + 20, height: EpisodeRow.height)
+            y += EpisodeRow.height + 4
         }
     }
 }
 
-/// One episode: thumbnail with progress, "N. Name", runtime and overview. Plays it.
+/// One episode (item/[id] page): a 16 pt-rounded row, white/5 on hover, the
+/// current episode ringed in the accent; the thumbnail darkens on hover with an
+/// accent play mark. Plays it.
 @MainActor
 final class EpisodeRow: FlippedView {
-    static let height: CGFloat = 108
+    static let height: CGFloat = 108 + 20
     private let thumb = RemoteImage()
+    private let thumbClip = CALayer()
+    private let shade = CALayer()
+    private let playDot = CAShapeLayer()
     private let track = CALayer()
     private let fill = CALayer()
-    private let name = makeLabel(font: Theme.text(15, .semibold), color: Theme.palette.ink)
-    private let detail = makeLabel(font: Theme.text(12.5), color: Theme.palette.muted)
-    private let overview = makeLabel(font: Theme.text(13), color: Theme.palette.ink.withAlphaComponent(0.7), lines: 2)
+    private let check = CATextLayer()
+    private let checkBG = CALayer()
+    private let name = makeLabel(font: Theme.text(14.5, .semibold), color: Theme.palette.ink)
+    private let detail = makeLabel(font: Theme.text(12), color: Theme.palette.muted)
+    private let overview = makeLabel(font: Theme.text(13), color: Theme.palette.muted, lines: 3)
     private let ep: JFItem
     private let ctx: NativeContext
+    private let isCurrent: Bool
     private var tracking: NSTrackingArea?
 
     init(_ ep: JFItem, ctx: NativeContext, isCurrent: Bool) {
         self.ep = ep
         self.ctx = ctx
+        self.isCurrent = isCurrent
         super.init(frame: .zero)
-        layer?.cornerRadius = 12
-        thumb.layer.cornerRadius = 10
-        thumb.layer.backgroundColor = Theme.palette.void2.cgColor
-        layer?.addSublayer(thumb.layer)
+        let p = Theme.palette
+        layer?.cornerRadius = 16
+        layer?.cornerCurve = .continuous
+        if isCurrent {
+            layer?.backgroundColor = NSColor.white.withAlphaComponent(0.06).cgColor
+            layer?.borderWidth = 1
+            layer?.borderColor = p.accent.withAlphaComponent(0.4).cgColor
+        }
+        thumbClip.cornerRadius = 12
+        thumbClip.cornerCurve = .continuous
+        thumbClip.masksToBounds = true
+        thumbClip.backgroundColor = p.void2.cgColor
+        thumbClip.addSublayer(thumb.layer)
+        shade.backgroundColor = p.void.withAlphaComponent(0.4).cgColor
+        shade.opacity = 0
+        thumbClip.addSublayer(shade)
+        playDot.fillColor = p.accent.cgColor
+        playDot.opacity = 0
+        thumbClip.addSublayer(playDot)
         track.backgroundColor = NSColor.white.withAlphaComponent(0.2).cgColor
-        fill.backgroundColor = Theme.palette.accent.cgColor
+        fill.backgroundColor = p.accent.cgColor
         track.addSublayer(fill)
-        layer?.addSublayer(track)
+        thumbClip.addSublayer(track)
+        checkBG.backgroundColor = p.accent.cgColor
+        checkBG.cornerRadius = 10
+        check.string = "✓"
+        check.font = Theme.text(11, .bold)
+        check.fontSize = 11
+        check.foregroundColor = p.accentInk.cgColor
+        check.alignmentMode = .center
+        check.contentsScale = 2
+        checkBG.addSublayer(check)
+        checkBG.isHidden = ep.UserData?.Played != true
+        thumbClip.addSublayer(checkBG)
+        layer?.addSublayer(thumbClip)
         for v in [name, detail, overview] { addSubview(v) }
-        name.stringValue = "\(ep.IndexNumber.map { "\($0). " } ?? "")\(ep.Name ?? "")" + (ep.UserData?.Played == true ? "  ✓" : "")
+        let t = NSMutableAttributedString()
+        if let n = ep.IndexNumber {
+            t.append(NSAttributedString(string: "\(n)  ", attributes: [.font: Theme.text(14.5, .semibold), .foregroundColor: p.muted]))
+        }
+        t.append(NSAttributedString(string: ep.Name ?? "", attributes: [.font: Theme.text(14.5, .semibold), .foregroundColor: p.ink]))
+        if isCurrent {
+            t.append(NSAttributedString(string: "   THIS EPISODE", attributes: [.font: Theme.text(11, .semibold), .foregroundColor: p.accent, .kern: 0.3]))
+        }
+        name.attributedStringValue = t
         var d: [String] = []
-        if isCurrent { d.append("This episode") }
         if let r = ep.runtimeText { d.append(r) }
         if let left = CardText.timeLeft(ep) { d.append(left) }
         detail.stringValue = d.joined(separator: " · ")
-        overview.stringValue = ep.Overview ?? ""
-        if isCurrent { layer?.backgroundColor = Theme.palette.glass.cgColor }
+        overview.attributedStringValue = NSAttributedString(string: ep.Overview ?? "", attributes: [
+            .font: Theme.text(13), .foregroundColor: p.muted,
+            .paragraphStyle: { let ps = NSMutableParagraphStyle(); ps.lineHeightMultiple = 1.2; return ps }(),
+        ])
         thumb.load(ctx.art.wide(ep, width: 400), points: 192, scale: 2)
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
     override func layout() {
         super.layout()
+        let pad: CGFloat = 10
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        thumb.layer.frame = CGRect(x: 0, y: 0, width: 192, height: 108)
+        thumbClip.frame = CGRect(x: pad, y: pad, width: 192, height: 108)
+        thumb.layer.frame = thumbClip.bounds
+        shade.frame = thumbClip.bounds
+        let d: CGFloat = 36
+        let dot = CGMutablePath()
+        dot.addEllipse(in: CGRect(x: 0, y: 0, width: d, height: d))
+        playDot.path = dot
+        playDot.frame = CGRect(x: (192 - d) / 2, y: (108 - d) / 2, width: d, height: d)
+        if playDot.sublayers == nil {
+            let glyph = CAShapeLayer()
+            glyph.path = PillButton.path(.play, 14)
+            glyph.fillColor = Theme.palette.accentInk.cgColor
+            glyph.frame = CGRect(x: (d - 14) / 2 + 1, y: (d - 14) / 2, width: 14, height: 14)
+            playDot.addSublayer(glyph)
+        }
         if let p = ep.progress {
             track.isHidden = false
             track.frame = CGRect(x: 0, y: 105, width: 192, height: 3)
             fill.frame = CGRect(x: 0, y: 0, width: 192 * p, height: 3)
         } else { track.isHidden = true }
+        checkBG.frame = CGRect(x: 192 - 26, y: 6, width: 20, height: 20)
+        check.frame = CGRect(x: 0, y: 3, width: 20, height: 14)
         CATransaction.commit()
-        let x: CGFloat = 192 + 18
-        name.frame = NSRect(x: x, y: 10, width: bounds.width - x - 12, height: 20)
-        detail.frame = NSRect(x: x, y: 32, width: bounds.width - x - 12, height: 16)
-        overview.frame = NSRect(x: x, y: 54, width: min(760, bounds.width - x - 12), height: 36)
+        let x = pad + 192 + 16
+        let w = bounds.width - x - pad
+        name.frame = NSRect(x: x, y: pad + 4, width: w, height: 20)
+        detail.frame = NSRect(x: x, y: pad + 26, width: w, height: 16)
+        overview.frame = NSRect(x: x, y: pad + 48, width: min(760, w), height: 56)
     }
 
     override func updateTrackingAreas() {
@@ -462,10 +556,21 @@ final class EpisodeRow: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { layer?.backgroundColor = Theme.palette.glassStrong.cgColor }
-    override func mouseExited(with event: NSEvent) { layer?.backgroundColor = nil }
+    private func hover(_ on: Bool) {
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.15)
+        CATransaction.setAnimationTimingFunction(Theme.standard)
+        if !isCurrent { layer?.backgroundColor = on ? NSColor.white.withAlphaComponent(0.05).cgColor : nil }
+        shade.opacity = on ? 1 : 0
+        playDot.opacity = on ? 1 : 0
+        CATransaction.commit()
+    }
+    override func mouseEntered(with event: NSEvent) { hover(true) }
+    override func mouseExited(with event: NSEvent) { hover(false) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseDown(with event: NSEvent) { layer?.transform = PillButton.lift(bounds, dy: 0, scale: 0.97) }
     override func mouseUp(with event: NSEvent) {
+        layer?.transform = CATransform3DIdentity
         if bounds.contains(convert(event.locationInWindow, from: nil)) { ctx.play(ep.Id) }
     }
 }

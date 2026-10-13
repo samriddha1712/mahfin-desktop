@@ -166,16 +166,31 @@ final class ArtworkView: FlippedView {
 /// A rounded button: filled (the accent), glass, or plain text. Hover and
 /// press respond at once, on the GPU.
 final class PillButton: FlippedView {
-    enum Style { case accent, glass, outline, text }
+    enum Style: Equatable {
+        case accent, glass, outline, text
+        /// Fixed colours: resting fill, hover fill, text (the cards' small pills).
+        case tinted(NSColor, NSColor, NSColor)
+    }
     private let label: NSTextField
     private let iconLayer = CAShapeLayer()
     var style: Style { didSet { restyle() } }
     var action: (() -> Void)?
-    var isEnabled = true { didSet { alphaValue = isEnabled ? 1 : 0.5 } }
+    var isEnabled = true {
+        didSet {
+            if case .tinted = style { alphaValue = 1 } else { alphaValue = isEnabled ? 1 : 0.5 }
+        }
+    }
     private var hovering = false
     private var tracking: NSTrackingArea?
     private let height: CGFloat
     var icon: Icon? { didSet { restyle(); needsLayout = true } }
+    /// A fixed corner radius (the web's `rounded-xl` is 12); nil is a full pill.
+    var radius: CGFloat? { didSet { restyle() } }
+    /// The hero's Play (`.hero-cta`): an accent glow underneath, a spring lift
+    /// on hover (up 2 pt, 3.5% larger) and a firmer press.
+    var cta = false { didSet { restyle() } }
+    /// A hairline for `.tinted` pills (the web's `border-glass-border`).
+    var border: NSColor? { didSet { restyle() } }
 
     enum Icon { case play, plus, check, chevronRight, chevronLeft, bookmark, bookmarkFilled }
 
@@ -208,14 +223,24 @@ final class PillButton: FlippedView {
 
     private func restyle() {
         let p = Theme.palette
-        layer?.cornerRadius = height / 2
+        layer?.cornerRadius = radius ?? height / 2
         layer?.borderWidth = 0
+        layer?.shadowOpacity = 0
         switch style {
         case .accent:
-            layer?.backgroundColor = p.accent.cgColor
+            // Hover is `filter: brightness(1.08)` on the web.
+            layer?.backgroundColor = (hovering ? p.accent.blended(withFraction: 0.08, of: .white) ?? p.accent : p.accent).cgColor
             label.textColor = p.accentInk
+            if cta {
+                layer?.shadowColor = p.accent.cgColor
+                layer?.shadowOpacity = hovering ? 0.85 : 0.7
+                layer?.shadowRadius = hovering ? 17 : 13
+                layer?.shadowOffset = CGSize(width: 0, height: hovering ? -14 : -8)
+                layer?.masksToBounds = false
+            }
         case .glass:
-            layer?.backgroundColor = (hovering ? p.glassStrong : p.panel).cgColor
+            // `.glass-dark`, and `hover:bg-white/10` over it.
+            layer?.backgroundColor = (hovering ? NSColor.white.withAlphaComponent(0.1) : p.panel).cgColor
             layer?.borderWidth = 1
             layer?.borderColor = p.glassBorder.cgColor
             label.textColor = p.ink
@@ -227,10 +252,31 @@ final class PillButton: FlippedView {
         case .text:
             layer?.backgroundColor = nil
             label.textColor = hovering ? p.ink : p.muted
+        case .tinted(let rest, let hover, let ink):
+            layer?.backgroundColor = (hovering && isEnabled ? hover : rest).cgColor
+            label.textColor = ink
+            if let border {
+                layer?.borderWidth = 1
+                layer?.borderColor = border.cgColor
+            }
         }
         iconLayer.fillColor = label.textColor?.cgColor
         iconLayer.strokeColor = label.textColor?.cgColor
-        if style == .accent { layer?.opacity = hovering ? 0.92 : 1 }
+        if cta {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.26)
+            CATransaction.setAnimationTimingFunction(Theme.spring)
+            layer?.transform = hovering ? Self.lift(bounds, dy: -2, scale: 1.035) : CATransform3DIdentity
+            CATransaction.commit()
+        }
+    }
+
+    /// A scale about the centre plus a vertical move, for a layer whose anchor
+    /// AppKit keeps at its corner.
+    static func lift(_ b: CGRect, dy: CGFloat, scale: CGFloat) -> CATransform3D {
+        var t = CATransform3DMakeTranslation(b.width / 2, b.height / 2 + dy, 0)
+        t = CATransform3DScale(t, scale, scale, 1)
+        return CATransform3DTranslate(t, -b.width / 2, -b.height / 2, 0)
     }
 
     override func layout() {
@@ -299,10 +345,15 @@ final class PillButton: FlippedView {
 
     override func mouseDown(with event: NSEvent) {
         guard isEnabled else { return }
-        layer?.setAffineTransform(CGAffineTransform(scaleX: 0.96, y: 0.96))
+        // The web's press is `scale: 0.97` (0.955 on the hero's Play), at once.
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.11)
+        layer?.transform = Self.lift(bounds, dy: 0, scale: cta ? 0.955 : 0.97)
+        CATransaction.commit()
     }
     override func mouseUp(with event: NSEvent) {
-        layer?.setAffineTransform(.identity)
+        CATransaction.begin(); CATransaction.setAnimationDuration(0.15)
+        layer?.transform = cta && hovering ? Self.lift(bounds, dy: -2, scale: 1.035) : CATransform3DIdentity
+        CATransaction.commit()
         guard isEnabled, bounds.contains(convert(event.locationInWindow, from: nil)) else { return }
         action?()
     }
@@ -367,6 +418,10 @@ final class CardStrip<Cell: NSView>: FlippedView {
     }
     /// Indices about to come on screen, for prefetching their images.
     var prefetch: ((Range<Int>) -> Void)?
+    var onScroll: (() -> Void)?
+    /// The web strip's `mask-image`: transparent at the very edges, solid by
+    /// 24 pt in from the left and 40 pt in from the right.
+    private let edgeFade = CAGradientLayer()
 
     init(make: @escaping () -> Cell, configure: @escaping (Cell, Int) -> Void) {
         self.make = make
@@ -381,6 +436,11 @@ final class CardStrip<Cell: NSView>: FlippedView {
         scroll.documentView = document
         scroll.contentView.postsBoundsChangedNotifications = true
         addSubview(scroll)
+        scroll.wantsLayer = true
+        edgeFade.colors = [NSColor.clear.cgColor, NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+        edgeFade.startPoint = CGPoint(x: 0, y: 0.5)
+        edgeFade.endPoint = CGPoint(x: 1, y: 0.5)
+        scroll.layer?.mask = edgeFade
         NotificationCenter.default.addObserver(self, selector: #selector(scrolled), name: NSView.boundsDidChangeNotification, object: scroll.contentView)
     }
     required init?(coder: NSCoder) { fatalError("not used") }
@@ -388,8 +448,23 @@ final class CardStrip<Cell: NSView>: FlippedView {
     override func layout() {
         super.layout()
         scroll.frame = bounds
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        edgeFade.frame = scroll.bounds
+        let w = max(1, bounds.width)
+        edgeFade.locations = [0, NSNumber(value: Double(24 / w)), NSNumber(value: Double(1 - 40 / w)), 1]
+        CATransaction.commit()
         relayout()
         refresh()
+    }
+
+    var scrollable: (Bool, Bool) {
+        let x = scroll.contentView.bounds.minX
+        return (x > 8, x + scroll.bounds.width < document.frame.width - 8)
+    }
+
+    /// The cards on screen, left to right.
+    var visibleCells: [NSView] {
+        live.sorted { $0.key < $1.key }.map(\.value).filter { !$0.visibleRect.isEmpty }
     }
 
     private func relayout() {
@@ -397,7 +472,10 @@ final class CardStrip<Cell: NSView>: FlippedView {
         document.frame = NSRect(x: 0, y: 0, width: max(width, bounds.width), height: bounds.height)
     }
 
-    @objc private func scrolled() { refresh() }
+    @objc private func scrolled() {
+        refresh()
+        onScroll?()
+    }
 
     func frame(for index: Int) -> NSRect {
         NSRect(x: inset + CGFloat(index) * (cellSize.width + spacing), y: Self.padTop, width: cellSize.width, height: cellSize.height)

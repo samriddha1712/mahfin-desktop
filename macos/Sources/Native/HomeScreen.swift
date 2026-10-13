@@ -9,6 +9,7 @@ import AppKit
 final class HomeScreen: ScreenView {
     private let hero: HeroView
     private let mood: MoodStrip
+    private let glow = AmbientGlow()
     private var order: [NSView] = []
     private var loaded = false
 
@@ -40,6 +41,10 @@ final class HomeScreen: ScreenView {
         hero = HeroView(ctx: ctx)
         mood = MoodStrip(ctx: ctx)
         super.init(route: .home, ctx: ctx)
+        indian.tricolour = true
+        // Under the scroll view, fixed to the window, as the web's fixed layer.
+        layer?.insertSublayer(glow, at: 0)
+        hero.onTint = { [weak self] c in self?.glow.tint(c) }
         document.addSubview(hero)
         rebuildOrder()
         load()
@@ -57,6 +62,17 @@ final class HomeScreen: ScreenView {
         rows = order.compactMap { $0 as? RowView }
         mood.isHidden = false
         needsLayout = true
+    }
+
+    override func scrolled(to y: CGFloat) {
+        hero.setScrollProgress(y / max(1, hero.frame.height))
+    }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        glow.frame = bounds
+        CATransaction.commit()
     }
 
     override func layoutDocument(width: CGFloat) {
@@ -324,7 +340,9 @@ final class MoodStrip: FlippedView {
         layer?.addSublayer(pill)
         addSubview(heading)
         chips = MoodStrip.vibes.map { id, label in
-            let b = PillButton(label, style: .outline, height: 38, fontSize: 13.5)
+            let b = PillButton(label, style: .tinted(NSColor.white.withAlphaComponent(0.03), NSColor.white.withAlphaComponent(0.1),
+                                                     Theme.palette.ink.withAlphaComponent(0.8)), height: 37, fontSize: 13.5)
+            b.border = Theme.palette.glassBorder
             b.action = { ctx.open("/mood/\(id.replacingOccurrences(of: "_", with: "-"))") }
             addSubview(b)
             return b
@@ -354,5 +372,57 @@ final class MoodStrip: FlippedView {
         let s = heading.fitSize
         heading.frame = NSRect(x: RowView.inset + 14, y: 20 - s.height / 2, width: s.width, height: s.height)
         flow(width: bounds.width, apply: true)
+    }
+}
+
+/// The page's ambient light (AmbientGlow.tsx): two soft ellipses of the hero's
+/// colour near the top of the window, breathing over 14 s. Drawn into an image
+/// once per colour — upright wherever it sits, unlike a gradient layer.
+final class AmbientGlow: CALayer {
+    private var last: NSColor?
+
+    override init() {
+        super.init()
+        contentsGravity = .resize
+        let breathe = CABasicAnimation(keyPath: "transform.scale")
+        breathe.fromValue = 1
+        breathe.toValue = 1.09
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0.85
+        fade.toValue = 1
+        let g = CAAnimationGroup()
+        g.animations = [breathe, fade]
+        g.duration = 14
+        g.autoreverses = true
+        g.repeatCount = .infinity
+        g.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        add(g, forKey: "breathe")
+        tint(Theme.rgb(0x503c8c))   // --t-ambient-rgb until a picture says otherwise
+    }
+    override init(layer: Any) { super.init(layer: layer) }
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    func tint(_ c: NSColor) {
+        guard c != last, let rgb = c.usingColorSpace(.sRGB) else { return }
+        last = c
+        let w = 320, h = 200
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return }
+        func ellipse(cx: CGFloat, cy: CGFloat, rx: CGFloat, ry: CGFloat, alpha: CGFloat, stop: CGFloat) {
+            let colors = [rgb.withAlphaComponent(alpha).cgColor, rgb.withAlphaComponent(0).cgColor] as CFArray
+            guard let g = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!, colors: colors, locations: [0, stop]) else { return }
+            ctx.saveGState()
+            // Bitmap y runs up: a point `cy` from the top is at h − cy.
+            ctx.translateBy(x: cx, y: CGFloat(h) - cy)
+            ctx.scaleBy(x: rx, y: ry)
+            ctx.drawRadialGradient(g, startCenter: .zero, startRadius: 0, endCenter: .zero, endRadius: 1, options: [])
+            ctx.restoreGState()
+        }
+        // ellipse 58% 34% at 50% 24% (0.34 → clear by 72%), and
+        // ellipse 95% 26% at 50% 2% (0.16 → clear by 78%).
+        ellipse(cx: CGFloat(w) * 0.5, cy: CGFloat(h) * 0.24, rx: CGFloat(w) * 0.58, ry: CGFloat(h) * 0.34, alpha: 0.34, stop: 0.72)
+        ellipse(cx: CGFloat(w) * 0.5, cy: CGFloat(h) * 0.02, rx: CGFloat(w) * 0.95, ry: CGFloat(h) * 0.26, alpha: 0.16, stop: 0.78)
+        contents = ctx.makeImage()
     }
 }

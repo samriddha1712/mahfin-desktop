@@ -168,7 +168,10 @@ final class NativeHost {
         root.addSubview(next, positioned: .below, relativeTo: barBlur)
         next.activate()
         if animated && !wasHidden {
+            next.markShown()
             slideIn(next, from: back ? -44 : 44)
+        } else {
+            next.fadeInIfFirst()
         }
         if let previous {
             previous.removeFromSuperview()

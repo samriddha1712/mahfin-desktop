@@ -103,4 +103,24 @@ final class ImagePipeline {
         var rect = CGRect(x: 0, y: 0, width: image.size.width * scale, height: image.size.height * scale)
         return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
+
+    /// The mean colour of an image (one pixel's worth of it).
+    static func average(_ image: CGImage) -> NSColor {
+        var px = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return .gray }
+        ctx.interpolationQuality = .medium
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return NSColor(srgbRed: CGFloat(px[0]) / 255, green: CGFloat(px[1]) / 255, blue: CGFloat(px[2]) / 255, alpha: 1)
+    }
+
+    /// Pushed away from grey as the web's AmbientGlow does: each channel moves
+    /// 2.2 times its distance from the mean.
+    static func vivid(_ c: NSColor) -> NSColor {
+        guard let c = c.usingColorSpace(.sRGB) else { return c }
+        let mean = (c.redComponent + c.greenComponent + c.blueComponent) / 3
+        func push(_ v: CGFloat) -> CGFloat { max(0, min(1, mean + (v - mean) * 2.2)) }
+        return NSColor(srgbRed: push(c.redComponent), green: push(c.greenComponent), blue: push(c.blueComponent), alpha: 1)
+    }
 }
