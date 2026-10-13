@@ -109,6 +109,12 @@ final class NativeHost {
 
     /// Goes to `path`: a native page at once, anything else when the web loads it.
     func open(_ path: String) {
+        // The player takes the whole window at once: it is drawn by mpv under a
+        // transparent web page, and nothing native may sit in between.
+        if path.hasPrefix("/play/") {
+            pending = (path, Date())
+            hideNative()
+        }
         if NativeRoute(path: path) != nil, session != nil {
             pending = (path, Date())
             if let r = NativeRoute(path: path) { show(r, animated: true) }

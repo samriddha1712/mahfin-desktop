@@ -1,4 +1,5 @@
 import AppKit
+import WebKit
 import QuartzCore
 
 // Dev builds only: runs MAHFIN_DEV_STEPS, e.g.
@@ -18,6 +19,10 @@ enum DevAutomation {
                 case "shot2": shotAppKit(arg)
                 case "open": NativeHost.shared?.open(arg)
                 case "nav": NativeHost.shared?.callNav?(arg, nil)
+                case "js":
+                    if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
+                        _ = try? await web.evaluateJavaScript(arg)
+                    }
                 case "scrollto":
                     if let root = window?.contentView?.subviews.first(where: { $0 is NativeRootView }),
                        let screen = root.subviews.first(where: { $0 is ScreenView }) as? ScreenView {
