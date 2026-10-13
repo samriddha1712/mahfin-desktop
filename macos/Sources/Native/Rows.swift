@@ -11,6 +11,16 @@ final class NativeContext {
     let art: Artwork
     /// Asks the web router to go to `path` (native pages included).
     let open: (String) -> Void
+    /// Opens one of the web app's own dialogs over this page ("recommend:<id>",
+    /// "download:<id>", "collection:<id>"): the same dialog, the same UI.
+    var openDialog: ((String) -> Void)?
+    /// Whether this build has a download route (the web's `downloadsConfigured`).
+    var downloadsConfigured = false
+    /// Whether this person is a Jellyfin administrator (Editor's pick).
+    var isAdmin = false
+    /// What friends said of each title ("movie:<tmdb>"), newest first, for
+    /// the badge on a card (the web's FriendsOnCard). One request per page.
+    var friendVerdicts: [String: [FriendOnCard]] = [:]
     var statuses: [String: Int] = [:]
     var saved: Set<String> = []          // "movie:123" keys on My List (watchlist)
     private var listeners: [() -> Void] = []
@@ -35,6 +45,16 @@ final class NativeContext {
             struct Watch: Codable { struct E: Codable { var tmdbId: Int; var mediaType: String }; var items: [E] }
             await api.load(Watch.self, .mahfin, "/api/watchlist") { w in
                 self?.saved = Set(w.items.map { "\($0.mediaType):\($0.tmdbId)" })
+                self?.changed()
+            }
+            struct Friends: Codable { var byKey: [String: [FriendOnCard]] }
+            await api.load(Friends.self, .mahfin, "/api/verdicts/friends") { f in
+                self?.friendVerdicts = f.byKey
+                self?.changed()
+            }
+            struct Me: Codable { struct P: Codable { var IsAdministrator: Bool? }; var Policy: P? }
+            if let me = try? await api.fetch(Me.self, .jellyfin, "Users/Me") {
+                self?.isAdmin = me.Policy?.IsAdministrator == true
                 self?.changed()
             }
         }
@@ -94,6 +114,8 @@ final class EntryCell: FlippedView {
             c.isHidden = false
             c.frame = bounds
             c.configure(item, art: ctx.art)
+            c.friends.set(MeterView.key(for: item).flatMap { ctx.friendVerdicts[$0] }, server: ctx.api.session.server,
+                          origin: CGPoint(x: 8, y: 8), fromRight: false)
             c.onOpen = { ctx.openItem(item) }
             c.onPicture = nil
         case .discover(let item):
@@ -102,6 +124,10 @@ final class EntryCell: FlippedView {
             c.isHidden = false
             c.frame = bounds
             c.configure(item, rank: rank, status: ctx.status(item), saved: ctx.saved.contains(item.key), tricolour: tricolour)
+            // Top left is free unless the row is ranked; then the numeral owns
+            // it, and the badge drops under the Movie/Show chip on the right.
+            c.friends.set(ctx.friendVerdicts[item.key], server: ctx.api.session.server,
+                          origin: rank != nil ? CGPoint(x: bounds.width - 6, y: 28) : CGPoint(x: 6, y: 6), fromRight: rank != nil)
             c.onOpen = { ctx.openDiscover(item) }
             c.onSave = { ctx.toggleSaved(item) }
             c.onRequest = { ctx.openDiscover(item) }
@@ -222,6 +248,8 @@ final class RowView: FlippedView {
                 guard let self, i < self.items.count else { return }
                 let item = self.items[i]
                 c.configure(item, art: ctx.art)
+                c.friends.set(MeterView.key(for: item).flatMap { ctx.friendVerdicts[$0] }, server: ctx.api.session.server,
+                              origin: CGPoint(x: 8, y: 8), fromRight: false)
                 c.onOpen = { ctx.openItem(item) }
             }
         case .wide:

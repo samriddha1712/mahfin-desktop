@@ -32,6 +32,27 @@ enum DevAutomation {
                     if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
                         _ = try? await web.evaluateJavaScript(arg)
                     }
+                case "jsprint":
+                    if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
+                        let r = try? await web.evaluateJavaScript(arg)
+                        print("[dev] js ->", r.map { "\($0)" } ?? "nil"); fflush(stdout)
+                    }
+                case "buttons":
+                    var out: [String] = []
+                    func walk(_ v: NSView) {
+                        if let b = v as? PillButton, !b.isHidden, b.window != nil { out.append(b.title) }
+                        v.subviews.forEach(walk)
+                    }
+                    if let c = window?.contentView { walk(c) }
+                    print("[dev] buttons:", out.joined(separator: " | ")); fflush(stdout)
+                case "badges":
+                    var n = 0
+                    func walk(_ v: NSView) {
+                        if let c = v as? CardCell, !c.friends.isHidden, !c.isHidden { n += 1 }
+                        v.subviews.forEach(walk)
+                    }
+                    if let c = window?.contentView { walk(c) }
+                    print("[dev] friend badges on cards:", n); fflush(stdout)
                 case "scrollto":
                     if let root = window?.contentView?.subviews.first(where: { $0 is NativeRootView }),
                        let screen = root.subviews.first(where: { $0 is ScreenView }) as? ScreenView {
@@ -78,6 +99,31 @@ enum DevAutomation {
                         return nil
                     }
                     if let c = window?.contentView, let h = find(c) { print("[dev] hero", h.debugState); fflush(stdout) }
+                case "meterfake":
+                    func findMeter(_ v: NSView) -> MeterView? {
+                        if let m = v as? MeterView { return m }
+                        for s in v.subviews { if let m = findMeter(s) { return m } }
+                        return nil
+                    }
+                    let now = Date().timeIntervalSince1970 * 1000
+                    let json = """
+                    {"key":"movie:1","total":7,"counts":{"perfection":3,"go_for_it":2,"timepass":1,"skip":1},"mine":"go_for_it",
+                     "friends":[{"person":{"id":"a","alias":"Quiet Comet","name":"partha_23","avatarOf":null},"verdict":"perfection","at":\(now - 7200000),"vibes":["mind_bending","edge"],
+                                 "review":{"text":"The last forty minutes rewrite everything before them. Watch it without reading anything.","at":\(now - 7200000),"likes":2,"liked":true}},
+                                {"person":{"id":"b","alias":"Amber Fox","name":"strucker30","avatarOf":null},"verdict":"timepass","at":\(now - 90000000),"vibes":["slow_burn"],"review":null}],
+                     "vibes":[{"vibe":"mind_bending","count":4},{"vibe":"edge","count":3},{"vibe":"dark","count":1}],
+                     "myVibes":["edge"],"myReview":{"text":"Better than the second one.","at":\(now - 300000),"likes":1,"liked":false},"otherReviews":2}
+                    """
+                    if let c = window?.contentView, let m = findMeter(c) { m.debugShow(json) } else { print("[dev] no meter") }
+                case "meteroff":
+                    if let c = window?.contentView {
+                        func y(_ v: NSView) -> CGFloat? {
+                            if let m = v as? MeterView { return m.frame.minY }
+                            for s in v.subviews { if let r = y(s) { return r } }
+                            return nil
+                        }
+                        print("[dev] meter at", y(c) as Any); fflush(stdout)
+                    }
                 case "layers": layers()
                 case "quit": NSApp.terminate(nil)
                 default: print("[dev] unknown step", step)

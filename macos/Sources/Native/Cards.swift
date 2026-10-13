@@ -88,6 +88,8 @@ class CardCell: FlippedView {
     /// The veil's play glyph size (17 on posters, 18 on wide cards).
     var playGlyph: CGFloat = 17
     var cornerRadius: CGFloat = 12
+    /// Friends who rated this title (FriendsOnCard), over the picture.
+    let friends = FriendsBadgeLayer()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -125,7 +127,7 @@ class CardCell: FlippedView {
         sheenClip.addSublayer(sheen)
         ring.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
         ring.borderWidth = 1
-        for l in [glow, placeholder, picture.layer, veil, playMark, sheenClip, ring] { tile.addSublayer(l) }
+        for l in [glow, placeholder, picture.layer, veil, playMark, sheenClip, ring, friends] { tile.addSublayer(l) }
         layer?.addSublayer(tile)
         addSubview(title)
         addSubview(meta)

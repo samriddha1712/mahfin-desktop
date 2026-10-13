@@ -276,6 +276,11 @@ final class PillButton: FlippedView {
     private var tracking: NSTrackingArea?
     private let height: CGFloat
     var icon: Icon? { didSet { restyle(); needsLayout = true } }
+    /// An Icons.tsx mark instead of a drawn `icon`: the SVG body, with
+    /// `currentColor` standing for the label's colour.
+    var svgIcon: String? { didSet { invalidateIntrinsicContentSize(); needsLayout = true } }
+    private let svgLayer = CALayer()
+    private var hasIcon: Bool { icon != nil || svgIcon != nil }
     /// A fixed corner radius (the web's `rounded-xl` is 12); nil is a full pill.
     var radius: CGFloat? { didSet { restyle() } }
     /// The hero's Play (`.hero-cta`): an accent glow underneath, a spring lift
@@ -293,6 +298,8 @@ final class PillButton: FlippedView {
         super.init(frame: .zero)
         addSubview(label)
         layer?.addSublayer(iconLayer)
+        svgLayer.contentsGravity = .resizeAspect
+        layer?.addSublayer(svgLayer)
         layer?.cornerCurve = .continuous
         restyle()
     }
@@ -306,7 +313,7 @@ final class PillButton: FlippedView {
     override var intrinsicContentSize: NSSize {
         let text = label.fitSize.width
         let pad: CGFloat = style == .text ? 0 : (height > 36 ? 22 : 14)
-        let iconW: CGFloat = icon == nil ? 0 : (title.isEmpty ? height * 0.42 : height * 0.36 + 8)
+        let iconW: CGFloat = !hasIcon ? 0 : (title.isEmpty ? height * 0.42 : height * 0.36 + 8)
         let w = title.isEmpty ? height : text + pad * 2 + iconW
         return NSSize(width: ceil(w), height: height)
     }
@@ -354,6 +361,7 @@ final class PillButton: FlippedView {
         }
         iconLayer.fillColor = label.textColor?.cgColor
         iconLayer.strokeColor = label.textColor?.cgColor
+        if svgIcon != nil { needsLayout = true }
         if cta {
             CATransaction.begin()
             CATransaction.setAnimationDuration(0.26)
@@ -375,7 +383,17 @@ final class PillButton: FlippedView {
         super.layout()
         let size = label.fitSize
         let iconSize = title.isEmpty ? height * 0.42 : height * 0.36
-        var x = (bounds.width - (size.width + (icon == nil || title.isEmpty ? 0 : iconSize + 8))) / 2
+        var x = (bounds.width - (size.width + (!hasIcon || title.isEmpty ? 0 : iconSize + 8))) / 2
+        if let svgIcon, icon == nil {
+            let ix = title.isEmpty ? (bounds.width - iconSize) / 2 : x
+            let color = Glyphs.hex(label.textColor ?? Theme.palette.ink)
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            svgLayer.frame = CGRect(x: ix, y: (bounds.height - iconSize) / 2, width: iconSize, height: iconSize)
+            svgLayer.contents = Glyphs.image(svgIcon.replacingOccurrences(of: "currentColor", with: color), size: iconSize)
+            CATransaction.commit()
+            x = ix + iconSize + 8
+        }
+        svgLayer.isHidden = svgIcon == nil || icon != nil
         if let icon {
             let ix = title.isEmpty ? (bounds.width - iconSize) / 2 : x
             CATransaction.begin(); CATransaction.setDisableActions(true)

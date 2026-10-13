@@ -75,6 +75,7 @@ final class NativeHost {
         barHeight = CGFloat(state.barHeight)
         if let s = state.session {
             if s != session { adopt(s) }
+            ctx?.downloadsConfigured = state.downloads
             Keychain.saveSession(state.rawSession)
         } else if state.path.hasPrefix("/login") {
             // Signed out: forget everything, show the web sign-in.
@@ -127,6 +128,7 @@ final class NativeHost {
     private func adopt(_ s: NativeSession) {
         session = s
         let ctx = NativeContext(session: s) { [weak self] path in self?.open(path) }
+        ctx.openDialog = { [weak self] spec in self?.callNav?("openDialog", spec) }
         self.ctx = ctx
         cache.values.forEach { $0.removeFromSuperview() }
         cache.removeAll()

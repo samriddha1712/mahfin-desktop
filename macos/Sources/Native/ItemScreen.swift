@@ -4,7 +4,7 @@ import AppKit
  * A title's page (Mahfin's src/app/(app)/item/[id]/page.tsx), natively: the
  * backdrop header, poster, logo or title, the ticket and meta lines, progress,
  * Play / Resume, My List and Mark watched, the overview, seasons and episodes,
- * cast, and "More like this". Play goes to the web player, as every Play does.
+ * the Mahfin Meter, cast, and "More like this". Play goes to the web player, as every Play does.
  */
 @MainActor
 final class ItemScreen: ScreenView {
@@ -28,12 +28,22 @@ final class ItemScreen: ScreenView {
     private let play = PillButton("Play", style: .accent, height: 46, fontSize: 15)
     private let favorite = PillButton("My List", style: .glass, height: 46, fontSize: 15)
     private let watched = PillButton("Mark watched", style: .glass, height: 46, fontSize: 15)
+    // The rest of the web page's row: each opens the web's own dialog over
+    // this page (Collection, Download, Recommend) or flips a pick in place.
+    private let collection = PillButton("Collection", style: .glass, height: 46, fontSize: 15)
+    private let pick = PillButton("Pick", style: .glass, height: 46, fontSize: 15)
+    private let download = PillButton("Download", style: .glass, height: 46, fontSize: 15)
+    private let recommend = PillButton("Recommend", style: .glass, height: 46, fontSize: 15)
+    private var picked = false
+    private var pickBusy = false
+    private var pickFull = false
     /// The poster's colour at 16%, laid over My List's glass (the web tints it
     /// from the poster's blurhash).
     private var tint: NSColor?
     private let overview = makeLabel(font: Theme.text(15), color: Theme.palette.ink.withAlphaComponent(0.8), lines: 0)
     private let studios = makeLabel(font: Theme.text(13), color: Theme.palette.muted)
     private let episodes: EpisodesView
+    private let meter: MeterView
     private lazy var cast = RowView(title: "Cast & crew", kind: .cast, ctx: ctx)
     private lazy var similar = RowView(title: "More like this", kind: .posters, ctx: ctx)
     private var ready = true
@@ -41,6 +51,7 @@ final class ItemScreen: ScreenView {
     init(id: String, ctx: NativeContext) {
         self.id = id
         episodes = EpisodesView(ctx: ctx)
+        meter = MeterView(ctx: ctx)
         super.init(route: .item(id: id), ctx: ctx)
         document.addSubview(header)
         document.addSubview(art)
@@ -76,8 +87,15 @@ final class ItemScreen: ScreenView {
         }
         favorite.icon = .plus
         watched.icon = .check
-        for b in [play, favorite, watched] { document.addSubview(b) }
+        collection.svgIcon = WebIcon.addSquare
+        pick.svgIcon = WebIcon.sparkle
+        download.svgIcon = WebIcon.download
+        recommend.svgIcon = WebIcon.star
+        for b in [collection, pick, download, recommend] { b.radius = 12 }
+        for b in actionButtons { document.addSubview(b) }
         document.addSubview(episodes)
+        document.addSubview(meter)
+        meter.onHeight = { [weak self] in self?.needsLayout = true }
         document.addSubview(cast)
         document.addSubview(similar)
         rows = [cast, similar]
@@ -86,10 +104,62 @@ final class ItemScreen: ScreenView {
             ctx.play(self.id)
         }
         favorite.action = { [weak self] in self?.toggleFavorite() }
+        collection.action = { [weak self] in self?.dialog("collection") }
+        download.action = { [weak self] in self?.dialog("download") }
+        recommend.action = { [weak self] in self?.dialog("recommend") }
+        pick.action = { [weak self] in self?.togglePick() }
+        ctx.onChange { [weak self] in self?.refreshButtons(); self?.loadPick() }
         watched.action = { [weak self] in self?.toggleWatched() }
         load()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    /// Web order: Play, My List, Collection, Watched, Pick, Download, Recommend.
+    private var actionButtons: [PillButton] { [play, favorite, collection, watched, pick, download, recommend] }
+
+    private func dialog(_ kind: String) {
+        ctx.openDialog?("\(kind):\(id)")
+    }
+
+    /// Editor's pick: only for an administrator, only for a title with a TMDB id.
+    private func loadPick() {
+        guard ctx.isAdmin, let item, let key = MeterView.key(for: item), !key.hasPrefix("jf:") else { return }
+        let api = ctx.api
+        Task { [weak self] in
+            struct Curated: Codable { var pickedKeys: [String] }
+            await api.load(Curated.self, .mahfin, "/api/curated") { c in
+                guard let self, !self.pickBusy else { return }
+                self.picked = c.pickedKeys.contains(key)
+                self.refreshButtons()
+            }
+        }
+    }
+
+    private func togglePick() {
+        guard let item, let key = MeterView.key(for: item), !pickBusy else { return }
+        let on = !picked
+        pickBusy = true
+        picked = on
+        pickFull = false
+        refreshButtons()
+        let api = ctx.api
+        let body: [String: Any] = on
+            ? ["action": "add", "key": key, "title": item.Name ?? "", "year": item.ProductionYear.map { String($0) } ?? NSNull()]
+            : ["action": "remove", "key": key]
+        Task { [weak self] in
+            do {
+                try await api.send(.mahfin, "POST", "/api/curated", json: body)
+                self?.pickBusy = false
+            } catch {
+                guard let self else { return }
+                self.pickBusy = false
+                self.picked = !on
+                // 409: the list is full (the web's "List full").
+                self.pickFull = (error as? MahfinAPI.Failure)?.status == 409
+                self.refreshButtons()
+            }
+        }
+    }
 
     override func activate() {
         super.activate()
@@ -167,6 +237,8 @@ final class ItemScreen: ScreenView {
             progressLabel.isHidden = true
         }
         cast.people = Array((item.People ?? []).prefix(20))
+        meter.show(for: item)
+        loadPick()
         if item.isSeries || item.isEpisode {
             episodes.isHidden = false
             episodes.load(seriesId: item.isSeries ? item.Id : (item.SeriesId ?? item.Id),
@@ -202,6 +274,25 @@ final class ItemScreen: ScreenView {
         if seen { watched.style = .tinted(p.panel, p.panel, p.accent) } else { watched.style = .glass }
         watched.isHidden = !(item.Type == "Movie" || item.isSeries)
         watched.title = seen ? "Watched" : (item.isSeries ? "Mark all watched" : "Mark watched")
+        let titled = item.Type == "Movie" || item.isSeries
+        collection.isHidden = !titled || MeterView.key(for: item) == nil
+        let key = MeterView.key(for: item)
+        pick.isHidden = !(titled && ctx.isAdmin && key != nil && !(key!.hasPrefix("jf:")))
+        pick.title = picked ? "Picked" : (pickFull ? "List full" : "Pick")
+        pick.toolTip = picked ? "In Editor's pick on the home page — press to take it out" : "Add to Editor's pick on the home page"
+        if picked { pick.style = .tinted(p.panel, NSColor.white.withAlphaComponent(0.1), p.accent); pick.border = p.glassBorder } else { pick.style = .glass }
+        download.isHidden = item.isPerson || !ctx.downloadsConfigured
+        recommend.isHidden = item.isPerson
+        // Download and Recommend wear the poster's tint, as My List does.
+        for b in [download, recommend] {
+            if let tint {
+                let rest = p.panel.blended(withFraction: 0.16, of: tint) ?? p.panel
+                b.style = .tinted(rest, NSColor.white.withAlphaComponent(0.1), p.ink)
+                b.border = p.glassBorder
+            } else {
+                b.style = .glass
+            }
+        }
         needsLayout = true
     }
 
@@ -294,10 +385,16 @@ final class ItemScreen: ScreenView {
             progressLabel.frame = NSRect(x: x + 332, y: y, width: 200, height: 16)
             y += 26
         }
+        // `flex-wrap gap-3`: as many as fit the column, then the next line.
         var bx = x
-        for b in [play, favorite, watched] where !b.isHidden {
+        for b in actionButtons where !b.isHidden {
             b.sizeToFit()
-            b.frame = NSRect(x: bx, y: y, width: b.frame.width + (b === play ? 10 : 0), height: 46)
+            let w = b.frame.width + (b === play ? 10 : 0)
+            if bx > x && bx + w > x + colW {
+                bx = x
+                y += 46 + 12
+            }
+            b.frame = NSRect(x: bx, y: y, width: w, height: 46)
             bx = b.frame.maxX + 12
         }
         y += 46 + 24
@@ -314,6 +411,12 @@ final class ItemScreen: ScreenView {
             let h = episodes.height(for: width)
             episodes.frame = NSRect(x: 0, y: y, width: width, height: h)
             y += h + 40
+        }
+        // The household verdict (`mt-12` on the web), keyed by TMDB id.
+        if !meter.isHidden {
+            let h = meter.height(for: width)
+            meter.frame = NSRect(x: 0, y: y, width: width, height: h)
+            y += h + 48
         }
         let bottom = stack([cast, similar], from: y, width: width, gap: 40) { ($0 as! RowView).height }
         document.frame = NSRect(x: 0, y: 0, width: width, height: max(bottom + 80, viewport))

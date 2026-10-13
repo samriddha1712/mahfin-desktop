@@ -49,6 +49,8 @@ struct WebRouteState {
     var rawSession: [String: Any]?
     /// Height of the web app's fixed top bar, in points.
     var barHeight: Double
+    /// What this web build offers that the native pages draw buttons for.
+    var downloads: Bool
 
     init?(_ dict: [String: Any]) {
         guard let path = dict["path"] as? String else { return nil }
@@ -56,6 +58,7 @@ struct WebRouteState {
         shell = dict["shell"] as? String ?? "topbar"
         theme = dict["theme"] as? String ?? "goldenhour"
         barHeight = (dict["barHeight"] as? NSNumber)?.doubleValue ?? 64
+        downloads = ((dict["features"] as? [String: Any])?["downloads"] as? Bool) ?? false
         rawSession = dict["session"] as? [String: Any]
         session = rawSession.flatMap(NativeSession.init)
     }
