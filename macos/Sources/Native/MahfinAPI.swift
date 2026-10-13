@@ -99,6 +99,17 @@ final class MahfinAPI {
 
     // MARK: Kept answers
 
+    /// Keeps a value this page computed from several requests (the hero's
+    /// picks), so it can be drawn at once next time like any single answer.
+    func keep<T: Encodable>(_ value: T, as name: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        remember(url(.mahfin, "/__kept/\(name)"), data)
+    }
+
+    func kept<T: Decodable>(_ type: T.Type, as name: String) -> T? {
+        recall(url(.mahfin, "/__kept/\(name)")).flatMap { try? JSONDecoder().decode(T.self, from: $0) }
+    }
+
     private func key(_ u: URL) -> String {
         // Hashed so a URL never becomes a path, and keyed per person because
         // the same URL answers differently for each of them.

@@ -91,7 +91,16 @@ final class HomeScreen: ScreenView {
         let uid = api.session.userId
         let fields = HomeScreen.cardFields
 
-        Task { await loadHero() }
+        // The last picks at once, then fresh ones (retried: a hero left empty
+        // by one failed request at launch stayed empty for the visit).
+        if hero.items.isEmpty, let kept = ctx.api.kept([JFItem].self, as: "hero") { hero.set(kept) }
+        Task { [weak self] in
+            for attempt in 0..<3 {
+                guard let self else { return }
+                if await self.loadHero() { return }
+                try? await Task.sleep(nanoseconds: UInt64(3 + attempt * 5) * 1_000_000_000)
+            }
+        }
 
         Task { [weak self] in
             await api.load(JFItems.self, .jellyfin, "UserItems/Resume", [
@@ -249,7 +258,8 @@ final class HomeScreen: ScreenView {
     }
 
     /// Seven titles, newest first, alternating films and shows (`heroQuery`).
-    private func loadHero() async {
+    @discardableResult
+    private func loadHero() async -> Bool {
         let api = ctx.api
         let uid = api.session.userId
         let now = ISO8601DateFormatter().string(from: Date())
@@ -289,7 +299,10 @@ final class HomeScreen: ScreenView {
             if takeFilm, let m = a.popFirst() { picks.append(m) } else if let s = b.popFirst() { picks.append(s) } else if let m = a.popFirst() { picks.append(m) }
             takeFilm.toggle()
         }
+        guard !picks.isEmpty else { return false }
+        ctx.api.keep(picks, as: "hero")
         hero.set(picks)
+        return true
     }
 }
 

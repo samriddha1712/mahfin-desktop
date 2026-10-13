@@ -35,6 +35,13 @@ enum DevAutomation {
                 case "scrollbench": await scrollBench()
                 case "log": print("[dev]", arg); fflush(stdout)
                 case "frames": frames()
+                case "hero":
+                    func find(_ v: NSView) -> HeroView? {
+                        if let h = v as? HeroView { return h }
+                        for s in v.subviews { if let h = find(s) { return h } }
+                        return nil
+                    }
+                    if let c = window?.contentView, let h = find(c) { print("[dev] hero", h.debugState); fflush(stdout) }
                 case "layers": layers()
                 case "quit": NSApp.terminate(nil)
                 default: print("[dev] unknown step", step)

@@ -13,6 +13,11 @@ final class HeroView: FlippedView {
 
     private let ctx: NativeContext
     private let backdrops = [RemoteImage(), RemoteImage()]
+    /// The two backdrops' own layer. Raising the incoming one is done inside
+    /// it: a zPosition set on a direct sublayer of the view lifted the picture
+    /// over every label and button in the hero (beta 1: the title, overview and
+    /// Play vanished from the second slide on).
+    private let backdropHost = CALayer()
     private var front = 0
     private let scrimBottom = ShadeLayer()
     private let scrimLeft = CAGradientLayer()
@@ -37,11 +42,14 @@ final class HeroView: FlippedView {
         super.init(frame: .zero)
         layer?.masksToBounds = true
         layer?.backgroundColor = Theme.palette.void.cgColor
+        backdropHost.masksToBounds = true
+        layer?.addSublayer(backdropHost)
         for b in backdrops {
             b.layer.contentsGravity = .resizeAspectFill
             b.layer.masksToBounds = true
-            layer?.addSublayer(b.layer)
+            backdropHost.addSublayer(b.layer)
         }
+        ticket.isHidden = true
         let v = Theme.palette.void
         // Top to foot: lightly dimmed under the bar, solid page colour at the foot.
         scrimBottom.set([v.withAlphaComponent(0.2), v.withAlphaComponent(0.3), v])
@@ -102,6 +110,10 @@ final class HeroView: FlippedView {
 
     private var showToken = 0
 
+    private func logoPixels() -> Int {
+        Int((380 * min(2, window?.backingScaleFactor ?? 2)).rounded(.up))
+    }
+
     private func backdropPixels() -> Int {
         Int((max(bounds.width, 1280) * min(2, window?.backingScaleFactor ?? 2)).rounded(.up))
     }
@@ -113,11 +125,18 @@ final class HeroView: FlippedView {
         let target = (i + items.count) % items.count
         showToken += 1
         let token = showToken
-        if animated, let url = ctx.art.backdrop(items[target], width: 1920),
-           ImagePipeline.shared.cached(url, pixels: backdropPixels()) == nil {
-            let px = backdropPixels()
+        let backdropURL = ctx.art.backdrop(items[target], width: 1920)
+        let logoURL = ctx.art.logo(items[target], width: 760)
+        let ready = (backdropURL.map { ImagePipeline.shared.cached($0, pixels: backdropPixels()) != nil } ?? true)
+            && (logoURL.map { ImagePipeline.shared.cached($0, pixels: logoPixels()) != nil } ?? true)
+        if animated && !ready {
+            let bpx = backdropPixels(), lpx = logoPixels()
             Task { @MainActor [weak self] in
-                _ = await ImagePipeline.shared.image(url, pixels: px)
+                // Picture and logo together, so the slide never changes with a
+                // gap where its title belongs.
+                async let b: CGImage? = backdropURL == nil ? nil : ImagePipeline.shared.image(backdropURL!, pixels: bpx)
+                async let l: CGImage? = logoURL == nil ? nil : ImagePipeline.shared.image(logoURL!, pixels: lpx)
+                _ = await (b, l)
                 guard let self, token == self.showToken else { return }
                 self.apply(target, animated: true)
             }
@@ -134,12 +153,25 @@ final class HeroView: FlippedView {
         let next = animated ? 1 - front : front
         let incoming = backdrops[next]
         incoming.load(ctx.art.backdrop(item, width: 1920), points: max(bounds.width, 1280), scale: scale)
+        // The incoming picture goes on top by order, not depth: drawn last
+        // within the backdrops' own layer, under everything else in the hero.
         CATransaction.begin()
-        CATransaction.setAnimationDuration(animated ? 1.0 : 0)
-        backdrops[next].layer.zPosition = 1
-        backdrops[1 - next].layer.zPosition = 0
-        backdrops[next].layer.opacity = 1
+        CATransaction.setDisableActions(true)
+        if backdropHost.sublayers?.last !== incoming.layer {
+            incoming.layer.removeFromSuperlayer()
+            backdropHost.addSublayer(incoming.layer)
+        }
         CATransaction.commit()
+        if animated {
+            // The picture is already decoded (`show` waits for it), so it is in
+            // place at once; this is the one-second crossfade over the old one.
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = 0
+            fade.toValue = 1
+            fade.duration = 1.0
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            incoming.layer.add(fade, forKey: "crossfade")
+        }
         front = next
         kenBurns(incoming.layer)
 
@@ -163,8 +195,10 @@ final class HeroView: FlippedView {
         needsLayout = true
         startCountdown()
         // The next slide's picture, ahead of time.
-        if items.count > 1, let u = ctx.art.backdrop(items[(index + 1) % items.count], width: 1920) {
-            ImagePipeline.shared.prefetch([u], pixels: backdropPixels())
+        if items.count > 1 {
+            let next = items[(index + 1) % items.count]
+            if let u = ctx.art.backdrop(next, width: 1920) { ImagePipeline.shared.prefetch([u], pixels: backdropPixels()) }
+            if let u = ctx.art.logo(next, width: 760) { ImagePipeline.shared.prefetch([u], pixels: logoPixels()) }
         }
     }
 
@@ -197,6 +231,14 @@ final class HeroView: FlippedView {
         dotFill.add(a, forKey: "countdown")
     }
 
+    /// For dev builds' checks: which slide, and what each backdrop layer holds.
+    var debugState: String {
+        let b = backdrops.enumerated().map { i, r in
+            "b\(i)[top=\(backdropHost.sublayers?.last === r.layer) op=\(r.layer.opacity) img=\(r.layer.contents != nil) url=\(r.url?.path.split(separator: "/")[1] ?? "-")]"
+        }.joined(separator: " ")
+        return "index=\(index) item=\(index < items.count ? items[index].Id : "-") front=\(front) " + b
+    }
+
     /// Stops rotating while the page is not on screen.
     func setActive(_ on: Bool) {
         if on { startCountdown() } else { timer?.invalidate(); timer = nil }
@@ -205,6 +247,7 @@ final class HeroView: FlippedView {
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
+        backdropHost.frame = bounds
         for b in backdrops {
             b.layer.bounds = CGRect(origin: .zero, size: bounds.size)
             b.layer.position = CGPoint(x: bounds.midX, y: bounds.midY)

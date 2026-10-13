@@ -52,6 +52,7 @@ final class ItemScreen: ScreenView {
         logo.layer.contentsGravity = .resizeAspect
         logo.onLoad = { [weak self] in self?.needsLayout = true }
         art.layer?.addSublayer(logo.layer)
+        ticket.isHidden = true
         ticketBox.fillColor = NSColor.white.withAlphaComponent(0.08).cgColor
         ticketBox.strokeColor = Theme.palette.accent.withAlphaComponent(0.5).cgColor
         ticketBox.lineDashPattern = [3, 2]
