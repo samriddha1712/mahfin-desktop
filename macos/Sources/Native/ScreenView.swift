@@ -52,6 +52,7 @@ class ScreenView: FlippedView {
     @objc private func didScroll() {
         let y = scroll.contentView.bounds.minY
         scrolled(to: y)
+        Hover.scrolled()
         let now = y > 24
         if now != scrolled {
             scrolled = now

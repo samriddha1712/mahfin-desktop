@@ -115,8 +115,11 @@ final class OttCell: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { setHover(true) }
-    override func mouseExited(with event: NSEvent) { setHover(false) }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, exclusive: true, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.setHover(true) }, end: { [weak self] in self?.setHover(false) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseUp(with event: NSEvent) {
         if bounds.contains(convert(event.locationInWindow, from: nil)) { onOpen?() }

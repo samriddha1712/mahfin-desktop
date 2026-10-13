@@ -312,8 +312,12 @@ final class RowView: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { hovered = true; updateArrows(animated: true) }
-    override func mouseExited(with event: NSEvent) { hovered = false; updateArrows(animated: true) }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.hovered = true; self?.updateArrows(animated: true) },
+                    end: { [weak self] in self?.hovered = false; self?.updateArrows(animated: true) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
 
     /// Shown only while the row is hovered, and only toward where there is more.
     private func updateArrows(animated: Bool) {
@@ -440,8 +444,12 @@ final class SeeAllButton: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true; restyle(animated: true) }
-    override func mouseExited(with event: NSEvent) { hovering = false; restyle(animated: true) }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.hovering = true; self?.restyle(animated: true) },
+                    end: { [weak self] in self?.hovering = false; self?.restyle(animated: true) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseDown(with event: NSEvent) { layer?.transform = PillButton.lift(bounds, dy: 0, scale: 0.97) }
     override func mouseUp(with event: NSEvent) {
@@ -495,8 +503,12 @@ final class NudgeButton: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true; scale(1.12, duration: 0.22) }
-    override func mouseExited(with event: NSEvent) { hovering = false; scale(1, duration: 0.22) }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.hovering = true; self?.scale(1.12, duration: 0.22) },
+                    end: { [weak self] in self?.hovering = false; self?.scale(1, duration: 0.22) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
     override func hitTest(_ point: NSPoint) -> NSView? { alphaValue < 0.05 ? nil : super.hitTest(point) }
     override func mouseDown(with event: NSEvent) { scale(0.9, duration: 0.12) }
     override func mouseUp(with event: NSEvent) {

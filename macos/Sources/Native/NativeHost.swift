@@ -101,6 +101,7 @@ final class NativeHost {
 
     func overlayChanged(_ open: Bool) {
         overlay = open
+        if open { Hover.endAll() }
         applyWebFrame()
     }
 
@@ -162,6 +163,7 @@ final class NativeHost {
         let back = recent.contains(r)
         let previous = current
         previous?.deactivate()
+        Hover.endAll()
         current = next
         next.frame = root.bounds
         next.autoresizingMask = [.width, .height]
@@ -206,6 +208,7 @@ final class NativeHost {
     }
 
     private func hideNative() {
+        Hover.endAll()
         current?.deactivate()
         root.isHidden = true
         webMode = .full

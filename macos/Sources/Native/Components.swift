@@ -9,6 +9,98 @@ import QuartzCore
  * from pixels.
  */
 
+/// What is hovered, checked against where the pointer really is.
+///
+/// AppKit tracks hover with per-view tracking areas, and a view that scrolls
+/// re-registers its area as it moves. If the pointer is inside at that moment,
+/// the "mouse exited" never comes — so cards scrolled under a resting pointer
+/// rose and stayed risen, several at once, and row arrows stayed lit (beta 4).
+/// Every hover goes through here instead:
+///  - after each scroll step the hovers the pointer has left are ended;
+///  - while the page is scrolling, new hovers wait, and 150 ms after it stops
+///    only what is really under the pointer is hovered — as Chrome does, and
+///    so a scroll never pays for lifting every card it passes;
+///  - cards are exclusive: one at a time.
+@MainActor
+enum Hover {
+    private struct Entry {
+        weak var view: NSView?
+        let area: () -> NSRect
+        let begin: () -> Void
+        let end: () -> Void
+        let exclusive: Bool
+    }
+    private static var active: [ObjectIdentifier: Entry] = [:]
+    private static var waiting: [ObjectIdentifier: Entry] = [:]
+    private static var lastScroll: CFTimeInterval = 0
+    private static var settleTimer: Timer?
+
+    static var isScrolling: Bool { CACurrentMediaTime() - lastScroll < 0.15 }
+
+    /// The pointer came over `view`.
+    static func enter(_ view: NSView, exclusive: Bool = false, area: @escaping () -> NSRect,
+                      begin: @escaping () -> Void, end: @escaping () -> Void) {
+        let e = Entry(view: view, area: area, begin: begin, end: end, exclusive: exclusive)
+        let k = ObjectIdentifier(view)
+        if isScrolling {
+            waiting[k] = e
+            return
+        }
+        activate(k, e)
+    }
+
+    /// The pointer left `view`.
+    static func exit(_ view: NSView) {
+        let k = ObjectIdentifier(view)
+        waiting[k] = nil
+        if let e = active.removeValue(forKey: k) { e.end() }
+    }
+
+    private static func activate(_ k: ObjectIdentifier, _ e: Entry) {
+        if e.exclusive {
+            for (other, o) in active where o.exclusive && other != k {
+                active[other] = nil
+                o.end()
+            }
+        }
+        if active[k] == nil { e.begin() }
+        active[k] = e
+    }
+
+    private static func contains(_ e: Entry) -> Bool {
+        guard let v = e.view, let window = v.window, !v.isHiddenOrHasHiddenAncestor else { return false }
+        let p = v.convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        return e.area().contains(p) && v.visibleRect.contains(p)
+    }
+
+    /// A scroll step: end what the pointer has left; hold new hovers until it settles.
+    static func scrolled() {
+        lastScroll = CACurrentMediaTime()
+        for (k, e) in active where !contains(e) {
+            active[k] = nil
+            e.end()
+        }
+        settleTimer?.invalidate()
+        settleTimer = Timer.scheduledTimer(withTimeInterval: 0.16, repeats: false) { _ in
+            MainActor.assumeIsolated { settle() }
+        }
+    }
+
+    private static func settle() {
+        let pending = waiting
+        waiting.removeAll()
+        for (k, e) in pending where contains(e) { activate(k, e) }
+    }
+
+    /// Ends everything (another page, a dialog over this one).
+    static func endAll() {
+        let all = active
+        active.removeAll()
+        waiting.removeAll()
+        all.values.forEach { $0.end() }
+    }
+}
+
 class FlippedView: NSView {
     override var isFlipped: Bool { true }
     override init(frame: NSRect) {
@@ -339,8 +431,12 @@ final class PillButton: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { hovering = true; restyle() }
-    override func mouseExited(with event: NSEvent) { hovering = false; restyle() }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.hovering = true; self?.restyle() },
+                    end: { [weak self] in self?.hovering = false; self?.restyle() })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func mouseDown(with event: NSEvent) {
@@ -475,6 +571,7 @@ final class CardStrip<Cell: NSView>: FlippedView {
     @objc private func scrolled() {
         refresh()
         onScroll?()
+        Hover.scrolled()
     }
 
     func frame(for index: Int) -> NSRect {

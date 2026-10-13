@@ -565,8 +565,11 @@ final class EpisodeRow: FlippedView {
         playDot.opacity = on ? 1 : 0
         CATransaction.commit()
     }
-    override func mouseEntered(with event: NSEvent) { hover(true) }
-    override func mouseExited(with event: NSEvent) { hover(false) }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.hover(true) }, end: { [weak self] in self?.hover(false) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseDown(with event: NSEvent) { layer?.transform = PillButton.lift(bounds, dy: 0, scale: 0.97) }
     override func mouseUp(with event: NSEvent) {

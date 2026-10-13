@@ -175,8 +175,14 @@ class CardCell: FlippedView {
         tracking = t
     }
 
-    override func mouseEntered(with event: NSEvent) { setHover(true) }
-    override func mouseExited(with event: NSEvent) { setHover(false) }
+    // Through `Hover`: one card at a time, never stuck, and none mid-scroll.
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, exclusive: true,
+                    area: { [unowned self] in NSRect(x: 0, y: 0, width: self.bounds.width, height: self.tileHeight) },
+                    begin: { [weak self] in self?.setHover(true) },
+                    end: { [weak self] in self?.setHover(false) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
 
     private func lifted(_ on: Bool) -> CATransform3D {
         var t = CATransform3DMakeTranslation(0, on ? -7 : 0, 0)
@@ -229,6 +235,7 @@ class CardCell: FlippedView {
 
     /// A reused cell must not keep the last card's hover.
     func resetForReuse() {
+        Hover.exit(self)
         hovering = true
         CATransaction.begin(); CATransaction.setDisableActions(true)
         setHover(false)
@@ -664,8 +671,11 @@ final class CastCell: FlippedView {
         ring.borderColor = Theme.palette.accent.withAlphaComponent(0.42).cgColor
         CATransaction.commit()
     }
-    override func mouseEntered(with event: NSEvent) { lift(true) }
-    override func mouseExited(with event: NSEvent) { lift(false) }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, exclusive: true, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.lift(true) }, end: { [weak self] in self?.lift(false) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
 }
 
 // MARK: - Text

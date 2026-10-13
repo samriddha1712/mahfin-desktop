@@ -35,6 +35,11 @@ enum DevAutomation {
                 case "scrollbench": await scrollBench()
                 case "log": print("[dev]", arg); fflush(stdout)
                 case "frames": frames()
+                case "hovered":
+                    var n = 0
+                    func walk(_ v: NSView) { if let c = v as? CardCell, c.hovering { n += 1 }; v.subviews.forEach(walk) }
+                    if let c = window?.contentView { walk(c) }
+                    print("[dev] hovered cards:", n); fflush(stdout)
                 case "hover":
                     // Hover the Nth card (by index across the page) that is on screen.
                     var cards: [CardCell] = []
@@ -44,7 +49,11 @@ enum DevAutomation {
                     }
                     if let c = window?.contentView { collect(c) }
                     let n = Int(arg) ?? 0
-                    if n < cards.count { cards[n].setHover(true); print("[dev] hovering", type(of: cards[n]), cards[n].title.stringValue) }
+                    if n < cards.count, let e = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0,
+                                                                         windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil) {
+                        cards[n].mouseEntered(with: e)
+                        print("[dev] hovering", type(of: cards[n]), cards[n].title.stringValue)
+                    }
                 case "hero":
                     func find(_ v: NSView) -> HeroView? {
                         if let h = v as? HeroView { return h }
