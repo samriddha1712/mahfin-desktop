@@ -70,7 +70,7 @@ class ScreenView: FlippedView {
         let line = clip.maxY - clip.height * 0.06
         for r in rows {
             r.refreshVisibility()
-            r.revealIfNeeded(viewportBottom: line, in: document)
+            r.revealIfNeeded(viewportBottom: line, viewportTop: clip.minY, in: document)
         }
     }
 

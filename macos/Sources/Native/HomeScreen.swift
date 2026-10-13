@@ -96,9 +96,12 @@ final class HomeScreen: ScreenView {
 
     // MARK: Loading
 
+    /// New data: lay the page out again. The rows' reveals are checked in
+    /// that layout, against their real positions — checking here, before it,
+    /// saw every newly filled row at y = 0 and revealed all twenty at launch,
+    /// off-screen, so none ever rose into view.
     private func rowsChanged() {
         needsLayout = true
-        refreshRows()
     }
 
     private func load() {

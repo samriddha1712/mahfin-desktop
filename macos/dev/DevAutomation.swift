@@ -35,6 +35,14 @@ enum DevAutomation {
                 case "scrollbench": await scrollBench()
                 case "log": print("[dev]", arg); fflush(stdout)
                 case "frames": frames()
+                case "rows":
+                    var out: [String] = []
+                    func walk(_ v: NSView) {
+                        if let r = v as? RowView { out.append("\(r.revealed ? "R" : "-")@\(Int(r.frame.minY))\(r.isHidden ? "h" : "")") }
+                        v.subviews.forEach(walk)
+                    }
+                    if let c = window?.contentView { walk(c) }
+                    print("[dev] rows", out.joined(separator: " ")); fflush(stdout)
                 case "hovered":
                     var n = 0
                     func walk(_ v: NSView) { if let c = v as? CardCell, c.hovering { n += 1 }; v.subviews.forEach(walk) }

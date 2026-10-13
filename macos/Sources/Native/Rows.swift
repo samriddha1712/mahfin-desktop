@@ -340,8 +340,10 @@ final class RowView: FlippedView {
     /// The first time the row is in view (and has something in it): it rises
     /// 24 pt and fades in, the pill springs up, and the first eight cards are
     /// dealt in after it (globals.css `.reveal`, `.row-pill`, `card-deal`).
-    func revealIfNeeded(viewportBottom: CGFloat, in document: NSView) {
-        guard !revealed, !isHidden, frame.minY < viewportBottom else { return }
+    func revealIfNeeded(viewportBottom: CGFloat, viewportTop: CGFloat, in document: NSView) {
+        // Laid out, and actually overlapping the window.
+        guard !revealed, !isHidden, frame.height > 0,
+              frame.minY < viewportBottom, frame.maxY > viewportTop else { return }
         revealed = true
         guard let layer else { return }
         let rise = CABasicAnimation(keyPath: "transform.translation.y")
