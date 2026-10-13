@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var player: MpvPlayer!
     private var videoView: VideoView!
     private var shell: WebShell!
+    private var native: NativeHost!
 
     static func main() {
         let app = NSApplication.shared
@@ -37,7 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered, defer: false)
         window.title = "Mahfin"
-        window.minSize = NSSize(width: 640, height: 400)
+        // Wide enough for the web app's desktop layout (768 pt and up): below
+        // it the bar becomes a phone tab bar, which a native page cannot sit under.
+        window.minSize = NSSize(width: 800, height: 520)
         window.appearance = NSAppearance(named: .darkAqua)
         // The page's own ground (#08080a), so nothing between layers ever shows
         // as a different black.
@@ -58,7 +61,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         shell = WebShell(player: player, window: window)
         shell.webView.frame = container.bounds
         shell.webView.autoresizingMask = [.width, .height]
+
+        // Native pages sit between the video and the web view (see NativeHost).
+        native = NativeHost(container: container, webView: shell.webView)
+        container.addSubview(native.root)
         container.addSubview(shell.webView)
+        native.callNav = { [weak self] method, arg in self?.shell.callNav(method, arg) }
+        shell.onNativeRoute = { [weak self] dict in
+            if let state = WebRouteState(dict) { self?.native.route(state) }
+        }
+        shell.onNativeOverlay = { [weak self] open in self?.native.overlayChanged(open) }
 
         window.contentView = container
         window.makeKeyAndOrderFront(nil)

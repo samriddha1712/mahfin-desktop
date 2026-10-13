@@ -18,6 +18,9 @@ final class WebShell: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMess
     private let player: MpvPlayer
     private weak var window: NSWindow?
     private var cursorHidden = false
+    /// Native pages (Sources/Native): what the page reports, and its answers.
+    var onNativeRoute: (([String: Any]) -> Void)?
+    var onNativeOverlay: ((Bool) -> Void)?
 
     static let startURL = URL(string: "https://mahfin.online/")!
 
@@ -196,6 +199,8 @@ final class WebShell: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMess
         case ("system", "openExternalUrl"): WebShell.openExternally(URL(string: str(0)))
         case ("window", "setCursorVisibility"): setCursorVisible(bool(0))
         case ("window", "setFullscreen"): setFullscreen(bool(0))
+        case ("native", "route"): if let d = a.first as? [String: Any] { onNativeRoute?(d) }
+        case ("native", "overlay"): onNativeOverlay?(bool(0))
         default:
             NSLog("bridge: no %@.%@", object, method)
         }
@@ -205,6 +210,22 @@ final class WebShell: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMess
         guard let data = try? JSONSerialization.data(withJSONObject: args),
               let json = String(data: data, encoding: .utf8) else { return }
         webView.evaluateJavaScript("window.__mahfinEmit && window.__mahfinEmit('\(object)','\(name)',\(json))")
+    }
+
+    /// `window.__mahfinNav[method](arg)` in the page; the argument is passed as
+    /// JSON so no value can break out of the call.
+    func callNav(_ method: String, _ arg: String?) {
+        guard method.allSatisfy({ $0.isLetter }) else { return }
+        var argJSON = ""
+        if let arg {
+            if arg == "true" || arg == "false" {
+                argJSON = arg
+            } else if let data = try? JSONSerialization.data(withJSONObject: [arg]),
+                      let json = String(data: data, encoding: .utf8) {
+                argJSON = String(json.dropFirst().dropLast())
+            }
+        }
+        webView.evaluateJavaScript("window.__mahfinNav && window.__mahfinNav.\(method)(\(argJSON))")
     }
 
     // MARK: Window

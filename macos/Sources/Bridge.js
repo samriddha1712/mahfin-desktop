@@ -57,6 +57,9 @@
      "bufferedRangesUpdated", "playbackRateChanged", "stopped", "canceled"],
   );
   const system = makeObject("system", ["openExternalUrl"], []);
+  // Native pages (Sources/Native): the page reports its route and open
+  // dialogs; the app answers through window.__mahfinNav.
+  const native = makeObject("native", ["route", "overlay"], []);
   const win = makeObject("window", ["setCursorVisibility", "setFullscreen"], []);
 
   Object.defineProperty(window, "__mahfinEmit", {
@@ -103,9 +106,11 @@
     graphics: { tier: "normal", softwareRenderer: false, adapter: "", memoryMB: 0, cores: 0, reasons: [] },
     settings: { main },
     settingsUpdate,
+    // Protocol version of the native pages; Mahfin's lib/nativeScreens reads it.
+    native: { screens: 1 },
   };
 
-  const api = Object.freeze({ player, system, window: win });
+  const api = Object.freeze({ player, system, window: win, native });
   window.api = api;
   window.apiPromise = Promise.resolve(api);
   window.initCompleted = Promise.resolve();

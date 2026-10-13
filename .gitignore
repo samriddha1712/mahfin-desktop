@@ -21,3 +21,4 @@ debian/files
 debian/mahfin-desktop.substvars
 debian/debhelper-build-stamp
 deployment/dist
+macos/build-dev/

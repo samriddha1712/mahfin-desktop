@@ -25,12 +25,14 @@ swiftc -O -whole-module-optimization \
   -I "$BREW/include" -L "$BREW/lib" -lmpv \
   -framework AppKit -framework WebKit -framework OpenGL -framework QuartzCore \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
-  Sources/*.swift \
+  Sources/*.swift Sources/Native/*.swift \
   -o "$APP/Contents/MacOS/Mahfin"
 
 sed "s/@VERSION@/${VERSION}/g" Resources/Info.plist.in > "$APP/Contents/Info.plist"
 cp Resources/mahfin.icns "$APP/Contents/Resources/"
 cp Sources/Bridge.js "$APP/Contents/Resources/"
+# Mahfin's fonts for the native pages (OFL; licences beside them).
+cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"
 # mpv verifies https against this list (a copied-in libmpv cannot use the
 # keychain). Homebrew's, else the system's own LibreSSL bundle.
 if [ -f "$BREW/etc/ca-certificates/cert.pem" ]; then
