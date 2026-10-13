@@ -1,6 +1,5 @@
 import AppKit
 import WebKit
-import Security
 
 /*
  * Puts native pages and the web app in one window.
@@ -275,35 +274,36 @@ final class NativeRootView: FlippedView {
     }
 }
 
-/// The signed-in session, kept in the login Keychain for this app only.
+/// The signed-in session, kept for the next cold launch.
+///
+/// A file readable by this user only, not the Keychain. The builds are
+/// ad-hoc signed (there is no paid developer identity), so the Keychain cannot
+/// recognise a later launch or a new build as the same app and asked for access
+/// on every start. The token is already on disk in WebKit's own storage for the
+/// site, unencrypted, so a 0600 file beside it costs nothing in safety.
 enum Keychain {
-    private static let service = "online.mahfin.mac.session"
+    private static var file: URL {
+        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("online.mahfin.mac", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        return dir.appendingPathComponent("session.json")
+    }
 
     static func saveSession(_ dict: [String: Any]?) {
         guard let dict, let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                    kSecAttrAccount as String: "session"]
-        if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
-            SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
-        } else {
-            var add = query
-            add[kSecValueData as String] = data
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            SecItemAdd(add as CFDictionary, nil)
-        }
+        let url = file
+        if let old = try? Data(contentsOf: url), old == data { return }
+        FileManager.default.createFile(atPath: url.path, contents: data, attributes: [.posixPermissions: 0o600])
     }
 
     static func loadSession() -> NativeSession? {
-        let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                    kSecAttrAccount as String: "session", kSecReturnData as String: true]
-        var out: AnyObject?
-        guard SecItemCopyMatching(query as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
+        guard let data = try? Data(contentsOf: file),
               let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
         return NativeSession(dict)
     }
 
     static func clearSession() {
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                       kSecAttrAccount as String: "session"] as CFDictionary)
+        try? FileManager.default.removeItem(at: file)
     }
 }

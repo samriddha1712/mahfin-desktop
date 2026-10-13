@@ -36,6 +36,11 @@ jobs:
       - name: Install libmpv, the bundler and create-dmg
         run: brew install mpv dylibbundler create-dmg
 
+      # The app asks for ao=avfoundation (MpvPlayer.swift); this says whether
+      # the mpv being bundled was built with it.
+      - name: mpv audio outputs
+        run: mpv --ao=help | tee /dev/stderr | grep -q avfoundation && echo "::notice::mpv has ao=avfoundation" || echo "::warning::mpv has no ao=avfoundation; the app falls back to coreaudio"
+
       - name: Build Mahfin.app
         run: |
           set -o pipefail

@@ -59,6 +59,14 @@ final class MpvPlayer {
             ("demuxer-mkv-probe-start-time", "no"),
             ("demuxer-lavf-probe-info", "yes"),
             ("audio-fallback-to-null", "yes"),
+            // AVFoundation before CoreAudio. mpv's CoreAudio output registers a
+            // device listener each time audio starts and removes it each time it
+            // stops, but CoreAudio can still deliver a device notification on
+            // its own queue after the output is freed: every crash report from
+            // 1.2.0-beta.3 to 1.3.0-beta.3 is a SIGSEGV in mp_msg <- hotplug_cb
+            // on "HALC_ProxyNotification Call Listener Queue". The AVFoundation
+            // output registers no such listener.
+            ("ao", "avfoundation,coreaudio"),
             ("ad-lavc-downmix", "no"),
             ("audio-client-name", "Mahfin"),
             ("title", "Mahfin"),

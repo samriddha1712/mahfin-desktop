@@ -168,6 +168,7 @@ final class RowView: FlippedView {
             strip = s
         }
         super.init(frame: .zero)
+        layer?.masksToBounds = false
         heading.stringValue = title
         pill.backgroundColor = Theme.palette.accent.cgColor
         pill.cornerRadius = 2.5
@@ -251,6 +252,7 @@ final class RowView: FlippedView {
     func refreshVisibility() { strip.refresh() }
 
     var height: CGFloat { RowView.headerHeight + strip.cellHeight + 8 }
+    private static let padTop: CGFloat = 16, padBottom: CGFloat = 28
 
     override func layout() {
         super.layout()
@@ -266,7 +268,11 @@ final class RowView: FlippedView {
             seeAll.sizeToFit()
             seeAll.frame = NSRect(x: x - seeAll.frame.width, y: 5, width: seeAll.frame.width, height: 30)
         }
-        strip.frame = NSRect(x: 0, y: RowView.headerHeight, width: bounds.width, height: strip.cellHeight + 8)
+        // The strip reaches above and below its cards (see CardStrip.padTop),
+        // overlapping the heading and the gap to the next row, so a hovered card
+        // and its shadow are never clipped. The cards stay where they were.
+        strip.frame = NSRect(x: 0, y: RowView.headerHeight - Self.padTop, width: bounds.width,
+                             height: strip.cellHeight + Self.padTop + Self.padBottom)
     }
 }
 

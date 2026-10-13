@@ -351,6 +351,11 @@ final class CardStrip<Cell: NSView>: FlippedView {
     var cellSize = NSSize(width: 166, height: 300)
     var spacing: CGFloat = 14
     var inset: CGFloat = 40
+    /// Room above and below the cards inside the strip's clip: a hovered card
+    /// rises 7 pt and grows 3.5%, and its shadow falls 20 pt below it. Without
+    /// it the clip cut the top off every lifted poster.
+    static var padTop: CGFloat { 16 }
+    static var padBottom: CGFloat { 28 }
     private var live: [Int: Cell] = [:]
     private var pool: [Cell] = []
     let make: () -> Cell
@@ -395,7 +400,7 @@ final class CardStrip<Cell: NSView>: FlippedView {
     @objc private func scrolled() { refresh() }
 
     func frame(for index: Int) -> NSRect {
-        NSRect(x: inset + CGFloat(index) * (cellSize.width + spacing), y: 0, width: cellSize.width, height: cellSize.height)
+        NSRect(x: inset + CGFloat(index) * (cellSize.width + spacing), y: Self.padTop, width: cellSize.width, height: cellSize.height)
     }
 
     /// Creates the cells in view (and a cell either side), recycles the rest.
