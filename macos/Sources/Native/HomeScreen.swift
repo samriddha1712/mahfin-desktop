@@ -34,6 +34,7 @@ final class HomeScreen: ScreenView {
     private lazy var because1 = RowView(title: "Because you watched", kind: .entries(ranked: false), ctx: ctx)
     private lazy var topRated = RowView(title: "Highest rated films", kind: .entries(ranked: false), seeAll: "/discover/browse/top-rated-films", ctx: ctx)
     private lazy var myList = RowView(title: "My List", kind: .posters, seeAll: "/watchlist", ctx: ctx)
+    private lazy var ottRow = RowView(title: "OTTs", kind: .otts, ctx: ctx)
 
     init(ctx: NativeContext) {
         hero = HeroView(ctx: ctx)
@@ -47,7 +48,7 @@ final class HomeScreen: ScreenView {
 
     private func rebuildOrder() {
         let before: [NSView] = [resume, nextUp, editors, talk, landed, soon, leaving, mood, trending, indian, popularMovies, popularShows]
-        let after: [NSView] = [because0, cinemas, otts, because1, topRated, myList]
+        let after: [NSView] = [because0, cinemas, otts, because1, topRated, myList, ottRow]
         order = before + latest + after
         for v in order where v.superview == nil {
             v.isHidden = true
@@ -170,6 +171,29 @@ final class HomeScreen: ScreenView {
             }
         }
         Task { await loadLatest() }
+        Task { [weak self] in await self?.loadOtts() }
+    }
+
+    /// Platforms this library carries anything from (`useOttCounts`), in order.
+    private func loadOtts() async {
+        let api = ctx.api
+        let uid = api.session.userId
+        let counts = await withTaskGroup(of: (String, Int).self) { group in
+            for o in Ott.all {
+                group.addTask {
+                    let r = try? await api.fetch(JFItems.self, .jellyfin, "Items", [
+                        "userId": uid, "recursive": "true", "studios": o.aliases.joined(separator: "|"),
+                        "includeItemTypes": "Movie,Series", "limit": "0",
+                    ])
+                    return (o.id, r?.TotalRecordCount ?? 0)
+                }
+            }
+            var out: [String: Int] = [:]
+            for await (id, n) in group { out[id] = n }
+            return out
+        }
+        ottRow.otts = Ott.all.filter { (counts[$0.id] ?? 0) > 0 }
+        rowsChanged()
     }
 
     private func feed(_ type: String, into row: RowView) {

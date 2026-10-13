@@ -83,7 +83,10 @@ final class ImagePipeline {
 
     private static func decode(_ data: Data, pixels: Int) -> CGImage? {
         let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
-        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions) else { return nil }
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions),
+              CGImageSourceGetCount(source) > 0 else {
+            return rasterize(data, pixels: pixels)
+        }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -91,5 +94,13 @@ final class ImagePipeline {
             kCGImageSourceThumbnailMaxPixelSize: max(1, pixels),
         ]
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
+    /// SVG (some of Mahfin's own logos): ImageIO does not read it, NSImage does.
+    private static func rasterize(_ data: Data, pixels: Int) -> CGImage? {
+        guard let image = NSImage(data: data), image.size.width > 0, image.size.height > 0 else { return nil }
+        let scale = CGFloat(pixels) / max(image.size.width, image.size.height)
+        var rect = CGRect(x: 0, y: 0, width: image.size.width * scale, height: image.size.height * scale)
+        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
     }
 }

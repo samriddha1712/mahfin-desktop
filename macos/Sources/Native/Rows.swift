@@ -117,7 +117,7 @@ final class EntryCell: FlippedView {
 
 /// A row on a page: heading (accent pill, title, "See all", arrows) over a strip.
 final class RowView: FlippedView {
-    enum Kind { case posters, wide, entries(ranked: Bool), cast }
+    enum Kind { case posters, wide, entries(ranked: Bool), cast, otts }
 
     let kind: Kind
     private let heading = makeLabel(font: Theme.display(25.6, .bold), color: Theme.palette.ink)
@@ -139,6 +139,7 @@ final class RowView: FlippedView {
     var items: [JFItem] = [] { didSet { reload(items.count) } }
     var entries: [CardEntry] = [] { didSet { reload(entries.count) } }
     var people: [JFPerson] = [] { didSet { reload(people.count) } }
+    var otts: [Ott] = [] { didSet { reload(otts.count) } }
 
     init(title: String, kind: Kind, seeAll: String? = nil, ctx: NativeContext) {
         self.kind = kind
@@ -160,6 +161,10 @@ final class RowView: FlippedView {
             let s = CardStrip<CastCell>(make: { CastCell(frame: NSRect(origin: .zero, size: CastCell.size)) }, configure: { _, _ in })
             s.cellSize = CastCell.size
             s.spacing = 18
+            strip = s
+        case .otts:
+            let s = CardStrip<OttCell>(make: { OttCell(frame: NSRect(origin: .zero, size: OttCell.size)) }, configure: { _, _ in })
+            s.cellSize = OttCell.size
             strip = s
         }
         super.init(frame: .zero)
@@ -209,6 +214,13 @@ final class RowView: FlippedView {
             (strip as! CardStrip<EntryCell>).setConfigure { [weak self] c, i in
                 guard let self, i < self.entries.count else { return }
                 c.configure(self.entries[i], rank: ranked && i < 10 ? i + 1 : nil, ctx: ctx)
+            }
+        case .otts:
+            (strip as! CardStrip<OttCell>).setConfigure { [weak self] c, i in
+                guard let self, i < self.otts.count else { return }
+                let o = self.otts[i]
+                c.configure(o, site: ctx.api.session.site)
+                c.onOpen = { ctx.open("/ott/\(o.id)") }
             }
         case .cast:
             (strip as! CardStrip<CastCell>).setConfigure { [weak self] c, i in
