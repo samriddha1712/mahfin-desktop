@@ -121,10 +121,21 @@ final class HeroTrailer {
             self.paused = false
             if self.held { p.pause() } else { p.play() }
             self.visible = true
+            self.lastStart = CACurrentMediaTime() - shownAt
             self.fade(in: true, seconds: HeroTrailer.fadeInSeconds)
             self.onControls?()
         }
     }
+
+    /// Looks the next slide's trailer up (and checks this Mac can draw it)
+    /// while the current one plays, so its own slide only waits for video.
+    func prefetch(_ itemId: String) {
+        guard clips[itemId] == nil else { return }
+        Task { @MainActor [weak self] in _ = await self?.clip(for: itemId) }
+    }
+
+    /// Seconds from the slide appearing to its trailer fading in, last time.
+    private(set) var lastStart: Double = 0
 
     /// Fades out ahead of the slide changing.
     func leave() {
@@ -158,7 +169,7 @@ final class HeroTrailer {
     }
 
     var debugState: String {
-        "trailer[visible=\(visible) rate=\(player?.rate ?? -1) muted=\(muted) inactive=\(inactive) offscreen=\(offscreen) occluded=\(occluded) ready=\(video.isReadyForDisplay)]"
+        "trailer[visible=\(visible) rate=\(player?.rate ?? -1) muted=\(muted) inactive=\(inactive) offscreen=\(offscreen) occluded=\(occluded) ready=\(video.isReadyForDisplay) start=\(String(format: "%.2f", lastStart))s]"
     }
 
     func toggleMute() {

@@ -153,6 +153,9 @@ final class NativeHost {
         return s
     }
 
+    /// Whether `current` is awake (activated and not since put to sleep).
+    private var currentActive = false
+
     private func show(_ r: NativeRoute, animated: Bool) {
         guard let next = screen(for: r) else { return }
         let wasHidden = root.isHidden
@@ -160,7 +163,17 @@ final class NativeHost {
         webMode = .bar
         applyWebFrame()
         defer { remember(r) }
-        if next === current { return }
+        if next === current {
+            // Back from a web page (the player, a mood page, sign-in at
+            // launch): the page was put to sleep by `hideNative` and is still
+            // `current`, so it has to be woken here — 1.3.2 returned early and
+            // left the hero's trailer paused and its slides stopped for good.
+            if !currentActive {
+                next.activate()
+                currentActive = true
+            }
+            return
+        }
         // Back to a page still kept: it slides in from the left, like the web.
         let back = recent.contains(r)
         let previous = current
@@ -171,6 +184,7 @@ final class NativeHost {
         next.autoresizingMask = [.width, .height]
         root.addSubview(next, positioned: .below, relativeTo: barBlur)
         next.activate()
+        currentActive = true
         if animated && !wasHidden {
             next.markShown()
             slideIn(next, from: back ? -44 : 44)
@@ -211,7 +225,8 @@ final class NativeHost {
 
     private func hideNative() {
         Hover.endAll()
-        current?.deactivate()
+        if currentActive { current?.deactivate() }
+        currentActive = false
         root.isHidden = true
         webMode = .full
         applyWebFrame()

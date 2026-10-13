@@ -162,15 +162,21 @@ final class HeroView: FlippedView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+        let names: [NSNotification.Name] = [NSWindow.didChangeOcclusionStateNotification,
+                                             NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification]
+        for n in names { NotificationCenter.default.removeObserver(self, name: n, object: nil) }
         guard let window else { return }
-        NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged),
-                                               name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        // Covered or minimised: pause. Focus moving to another app: the
+        // pointer's hover stops counting, as tracking areas stop reporting.
+        for n in names {
+            NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged), name: n, object: window)
+        }
         occlusionChanged()
     }
 
     @objc private func occlusionChanged() {
         trailer.setOccluded(!(window?.occlusionState.contains(.visible) ?? false))
+        syncHover()
     }
 
     /// Mute and pause, only while something is playing to control.
@@ -189,16 +195,35 @@ final class HeroView: FlippedView {
         }
     }
 
+    /// The web's top bar lies over the hero's first 64 pt, and on the web the
+    /// bar is not part of the hero: a pointer resting on the bar is not one
+    /// resting on the trailer.
+    static let barInset: CGFloat = 64
+
+    private var hoverRect: NSRect {
+        NSRect(x: 0, y: HeroView.barInset, width: bounds.width, height: max(0, bounds.height - HeroView.barInset))
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let heroTracking { removeTrackingArea(heroTracking) }
-        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        let t = NSTrackingArea(rect: hoverRect, options: [.mouseEnteredAndExited, .activeInKeyWindow], owner: self)
         addTrackingArea(t)
         heroTracking = t
     }
     // Hovering the hero gives a trailer its full length (Hero.tsx onMouseEnter).
     override func mouseEntered(with event: NSEvent) { setEngaged(true) }
     override func mouseExited(with event: NSEvent) { setEngaged(false) }
+
+    /// Where the pointer really is. Tracking areas miss the exit when the page
+    /// scrolls the hero out from under a still pointer, or when the window
+    /// loses focus mid-hover — and a missed exit held a slide for the whole
+    /// length of its trailer.
+    private func syncHover() {
+        guard let window, window.isKeyWindow else { setEngaged(false); return }
+        let p = convert(window.mouseLocationOutsideOfEventStream, from: nil)
+        setEngaged(hoverRect.intersection(visibleRect).contains(p))
+    }
 
     private func setEngaged(_ e: Bool) {
         guard e != engaged else { return }
@@ -323,6 +348,7 @@ final class HeroView: FlippedView {
         startCountdown()
         if items.count > 1 {
             let next = items[(index + 1) % items.count]
+            trailer.prefetch(next.Id)
             if let u = ctx.art.backdrop(next, width: 1920) { ImagePipeline.shared.prefetch([u], pixels: backdropPixels()) }
             if let u = ctx.art.logo(next, width: 760) { ImagePipeline.shared.prefetch([u], pixels: logoPixels()) }
         }
@@ -437,7 +463,15 @@ final class HeroView: FlippedView {
     func setActive(_ on: Bool) {
         active = on
         trailer.setActive(on)
-        if on { startCountdown() } else { timer?.invalidate(); timer = nil; leaving = false }
+        if on {
+            syncHover()
+            startCountdown()
+        } else {
+            timer?.invalidate()
+            timer = nil
+            leaving = false
+            engaged = false
+        }
     }
 
     /// How far the hero has scrolled out of view, 0…1 (`--scroll-p`).
@@ -453,6 +487,7 @@ final class HeroView: FlippedView {
         CATransaction.commit()
         // Under a quarter of it showing is not worth decoding.
         trailer.setOffscreen(p > 0.75)
+        syncHover()
     }
 
     override func layout() {
