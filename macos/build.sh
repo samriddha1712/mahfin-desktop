@@ -24,6 +24,7 @@ swiftc -O -whole-module-optimization \
   -import-objc-header Sources/Bridging.h \
   -I "$BREW/include" -L "$BREW/lib" -lmpv \
   -framework AppKit -framework WebKit -framework OpenGL -framework QuartzCore \
+  -framework AVFoundation -framework CoreMedia -framework VideoToolbox \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks \
   Sources/*.swift Sources/Native/*.swift \
   -o "$APP/Contents/MacOS/Mahfin"

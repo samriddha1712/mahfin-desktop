@@ -17,6 +17,15 @@ enum DevAutomation {
                 case "wait": try? await Task.sleep(nanoseconds: UInt64((Double(arg) ?? 1) * 1e9))
                 case "shot": shot(arg)
                 case "shot2": shotAppKit(arg)
+                case "winshot":
+                    // The window as the screen composites it — the only capture
+                    // that includes video layers.
+                    if let w = window {
+                        let t = Process()
+                        t.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                        t.arguments = ["-x", "-o", "-l", String(w.windowNumber), arg]
+                        try? t.run(); t.waitUntilExit()
+                    }
                 case "open": NativeHost.shared?.open(arg)
                 case "nav": NativeHost.shared?.callNav?(arg, nil)
                 case "js":

@@ -284,7 +284,7 @@ final class PillButton: FlippedView {
     /// A hairline for `.tinted` pills (the web's `border-glass-border`).
     var border: NSColor? { didSet { restyle() } }
 
-    enum Icon { case play, plus, check, chevronRight, chevronLeft, bookmark, bookmarkFilled }
+    enum Icon { case play, plus, check, chevronRight, chevronLeft, bookmark, bookmarkFilled, pause, speaker, speakerMuted }
 
     init(_ title: String, style: Style, height: CGFloat = 44, fontSize: CGFloat = 15) {
         self.style = style
@@ -381,8 +381,8 @@ final class PillButton: FlippedView {
             CATransaction.begin(); CATransaction.setDisableActions(true)
             iconLayer.frame = CGRect(x: ix, y: (bounds.height - iconSize) / 2, width: iconSize, height: iconSize)
             iconLayer.path = Self.path(icon, iconSize)
-            iconLayer.lineWidth = icon == .play ? 0 : max(1.6, iconSize / 9)
-            iconLayer.fillColor = (icon == .play || icon == .bookmarkFilled) ? label.textColor?.cgColor : nil
+            iconLayer.lineWidth = icon == .play || icon == .pause ? 0 : max(1.6, iconSize / 9)
+            iconLayer.fillColor = (icon == .play || icon == .pause || icon == .bookmarkFilled) ? label.textColor?.cgColor : nil
             iconLayer.lineCap = .round
             iconLayer.lineJoin = .round
             CATransaction.commit()
@@ -413,6 +413,26 @@ final class PillButton: FlippedView {
         case .chevronLeft:
             p.move(to: CGPoint(x: s * 0.64, y: s * 0.18)); p.addLine(to: CGPoint(x: s * 0.32, y: s * 0.5))
             p.addLine(to: CGPoint(x: s * 0.64, y: s * 0.82))
+        case .pause:
+            p.addRoundedRect(in: CGRect(x: s * 0.24, y: s * 0.16, width: s * 0.17, height: s * 0.68), cornerWidth: s * 0.04, cornerHeight: s * 0.04)
+            p.addRoundedRect(in: CGRect(x: s * 0.59, y: s * 0.16, width: s * 0.17, height: s * 0.68), cornerWidth: s * 0.04, cornerHeight: s * 0.04)
+        case .speaker, .speakerMuted:
+            p.move(to: CGPoint(x: s * 0.12, y: s * 0.38))
+            p.addLine(to: CGPoint(x: s * 0.3, y: s * 0.38))
+            p.addLine(to: CGPoint(x: s * 0.52, y: s * 0.18))
+            p.addLine(to: CGPoint(x: s * 0.52, y: s * 0.82))
+            p.addLine(to: CGPoint(x: s * 0.3, y: s * 0.62))
+            p.addLine(to: CGPoint(x: s * 0.12, y: s * 0.62))
+            p.closeSubpath()
+            if icon == .speaker {
+                p.move(to: CGPoint(x: s * 0.66, y: s * 0.36))
+                p.addQuadCurve(to: CGPoint(x: s * 0.66, y: s * 0.64), control: CGPoint(x: s * 0.76, y: s * 0.5))
+                p.move(to: CGPoint(x: s * 0.76, y: s * 0.26))
+                p.addQuadCurve(to: CGPoint(x: s * 0.76, y: s * 0.74), control: CGPoint(x: s * 0.94, y: s * 0.5))
+            } else {
+                p.move(to: CGPoint(x: s * 0.66, y: s * 0.38)); p.addLine(to: CGPoint(x: s * 0.9, y: s * 0.62))
+                p.move(to: CGPoint(x: s * 0.9, y: s * 0.38)); p.addLine(to: CGPoint(x: s * 0.66, y: s * 0.62))
+            }
         case .bookmark, .bookmarkFilled:
             p.move(to: CGPoint(x: s * 0.26, y: s * 0.12))
             p.addLine(to: CGPoint(x: s * 0.74, y: s * 0.12))

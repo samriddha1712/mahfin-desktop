@@ -20,6 +20,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 SRC=(${(f)"$(ls Sources/*.swift | grep -v -E 'MpvPlayer|VideoLayer')"})
 xcrun swiftc -O -parse-as-library -module-name Mahfin -Xcc -DGL_SILENCE_DEPRECATION \
   -framework AppKit -framework WebKit -framework QuartzCore \
+  -framework AVFoundation -framework CoreMedia -framework VideoToolbox \
   $SRC Sources/Native/*.swift dev/DevStubs.swift dev/DevAutomation.swift \
   -o "$APP/Contents/MacOS/Mahfin"
 sed "s/@VERSION@/0.0.0-dev/g" Resources/Info.plist.in > "$APP/Contents/Info.plist"

@@ -6,7 +6,8 @@ import QuartzCore
  * full-bleed backdrop with a slow zoom, the two scrims, "Featured tonight",
  * the logo (or the title), the rating ticket and meta line, three lines of
  * overview, Play and More info, and a pager whose active dot is the
- * countdown. Seven titles, nine seconds each.
+ * countdown. Seven titles, nine seconds each — or, for one with a trailer,
+ * fifteen seconds of it (all of it while the pointer is over the hero).
  *
  * Motion, from globals.css: the copy rises in once (`.hero-enter`, 60 ms then
  * every 70 ms, 620 ms expo-out); as the page scrolls the backdrop drifts down
@@ -15,6 +16,8 @@ import QuartzCore
  */
 final class HeroView: FlippedView {
     static let rotateSeconds: TimeInterval = 9
+    /// How long a trailer previews before the hero moves on (Hero.tsx PREVIEW_MS).
+    static let previewSeconds: TimeInterval = 15
 
     private let ctx: NativeContext
     private let backdrops = [RemoteImage(), RemoteImage()]
@@ -46,6 +49,23 @@ final class HeroView: FlippedView {
     private var dots: [CALayer] = []
     private let dotFill = CALayer()
     private var timer: Timer?
+    private let trailer: HeroTrailer
+    private let trailerControls = FlippedView()
+    private let muteButton = TrailerButton()
+    private let pauseButton = TrailerButton()
+    /// The current slide's trailer length, once known.
+    private var trailerSeconds: Double?
+    /// The pointer is over the hero, or the trailer's own controls were used.
+    private var engaged = false
+    /// The trailer is fading out ahead of the slide changing.
+    private var leaving = false
+    private var active = true
+    private var heroTracking: NSTrackingArea?
+    /// The countdown, re-anchored whenever its length changes so the fill
+    /// never jumps backwards (Hero.tsx's anchor).
+    private var anchorAt: CFTimeInterval = 0
+    private var anchorFrom: Double = 0
+    private var anchorRemaining: Double = HeroView.rotateSeconds
     private(set) var items: [JFItem] = []
     private var index = 0
     private var entered = false
@@ -55,6 +75,7 @@ final class HeroView: FlippedView {
 
     init(ctx: NativeContext) {
         self.ctx = ctx
+        trailer = HeroTrailer(api: ctx.api)
         super.init(frame: .zero)
         layer?.masksToBounds = true
         layer?.backgroundColor = Theme.palette.void.cgColor
@@ -65,6 +86,8 @@ final class HeroView: FlippedView {
             b.layer.masksToBounds = true
             backdropHost.addSublayer(b.layer)
         }
+        // Over the artwork, under the scrims (as HeroTrailer sits in Hero.tsx).
+        layer?.addSublayer(trailer.host)
         ticket.isHidden = true
         let v = Theme.palette.void
         // Top to foot: lightly dimmed under the bar, solid page colour at the foot.
@@ -121,6 +144,66 @@ final class HeroView: FlippedView {
         nextSlide.action = { [weak self] in guard let self else { return }; self.show(self.index + 1, animated: true) }
         dotFill.backgroundColor = Theme.palette.accent.cgColor
         dotFill.anchorPoint = CGPoint(x: 0, y: 0.5)
+
+        trailerControls.addSubview(muteButton)
+        trailerControls.addSubview(pauseButton)
+        trailerControls.isHidden = true
+        addSubview(trailerControls)
+        muteButton.action = { [weak self] in self?.trailer.toggleMute() }
+        pauseButton.action = { [weak self] in self?.trailer.togglePause() }
+        trailer.onDuration = { [weak self] seconds in
+            guard let self else { return }
+            self.trailerSeconds = seconds > 0 ? seconds : nil
+            self.retarget()
+        }
+        trailer.onEngaged = { [weak self] e in self?.setEngaged(e) }
+        trailer.onControls = { [weak self] in self?.updateControls() }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didChangeOcclusionStateNotification, object: nil)
+        guard let window else { return }
+        NotificationCenter.default.addObserver(self, selector: #selector(occlusionChanged),
+                                               name: NSWindow.didChangeOcclusionStateNotification, object: window)
+        occlusionChanged()
+    }
+
+    @objc private func occlusionChanged() {
+        trailer.setOccluded(!(window?.occlusionState.contains(.visible) ?? false))
+    }
+
+    /// Mute and pause, only while something is playing to control.
+    private func updateControls() {
+        let show = trailer.visible && !leaving
+        muteButton.set(trailer.muted ? .speakerMuted : .speaker)
+        pauseButton.set(trailer.paused ? .play : .pause)
+        guard show == trailerControls.isHidden else { return }
+        trailerControls.isHidden = !show
+        if show, let l = trailerControls.layer {
+            let a = CABasicAnimation(keyPath: "opacity")
+            a.fromValue = 0
+            a.toValue = 1
+            a.duration = 0.3
+            l.add(a, forKey: "fade")
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let heroTracking { removeTrackingArea(heroTracking) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(t)
+        heroTracking = t
+    }
+    // Hovering the hero gives a trailer its full length (Hero.tsx onMouseEnter).
+    override func mouseEntered(with event: NSEvent) { setEngaged(true) }
+    override func mouseExited(with event: NSEvent) { setEngaged(false) }
+
+    private func setEngaged(_ e: Bool) {
+        guard e != engaged else { return }
+        engaged = e
+        retarget()
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
@@ -210,6 +293,9 @@ final class HeroView: FlippedView {
         }
         front = next
         kenBurns(incoming.layer)
+        leaving = false
+        trailerSeconds = nil
+        trailer.load(item.Id)
 
         logo.load(ctx.art.logo(item, width: 760), points: 380, scale: scale)
         let hasLogo = ctx.art.logo(item, width: 760) != nil
@@ -278,22 +364,65 @@ final class HeroView: FlippedView {
         l.add(a, forKey: "kenburns")
     }
 
+    /// This slide's hold: nine seconds, or the trailer's preview (its whole
+    /// length while engaged).
+    private var target: Double {
+        guard let t = trailerSeconds else { return HeroView.rotateSeconds }
+        return engaged ? max(t, 1) : HeroView.previewSeconds
+    }
+
+    private var progress: Double {
+        min(1, anchorFrom + (1 - anchorFrom) * (CACurrentMediaTime() - anchorAt) / max(0.001, anchorRemaining))
+    }
+
+    /// A new slide starts empty.
     private func startCountdown() {
-        timer?.invalidate()
-        guard items.count > 1 else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: HeroView.rotateSeconds, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.show(self.index + 1, animated: true)
-            }
-        }
+        anchorFrom = 0
+        anchorAt = CACurrentMediaTime()
+        anchorRemaining = target
         layoutDots(animated: true)
+        runCountdown()
+    }
+
+    /// The hold changed length part way through: carry on from where the
+    /// fill has got to, at the new pace.
+    private func retarget() {
+        guard timer?.isValid == true else { return }
+        let p = progress
+        anchorFrom = p
+        anchorAt = CACurrentMediaTime()
+        anchorRemaining = max(0.25, target * (1 - p))
+        runCountdown()
+    }
+
+    private func runCountdown() {
+        timer?.invalidate()
+        timer = nil
+        guard items.count > 1 else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: anchorRemaining, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated { self?.finish() }
+        }
         dotFill.removeAllAnimations()
         let a = CABasicAnimation(keyPath: "transform.scale.x")
-        a.fromValue = 0
+        a.fromValue = anchorFrom
         a.toValue = 1
-        a.duration = HeroView.rotateSeconds
+        a.duration = anchorRemaining
         dotFill.add(a, forKey: "countdown")
+    }
+
+    /// Fades the trailer out, then changes the slide.
+    private func finish() {
+        guard trailer.visible else { show(index + 1, animated: true); return }
+        leaving = true
+        trailer.leave()
+        updateControls()
+        let at = index
+        DispatchQueue.main.asyncAfter(deadline: .now() + HeroTrailer.fadeOutSeconds) { [weak self] in
+            guard let self, self.leaving, self.active, self.index == at else { return }
+            self.leaving = false
+            self.engaged = false
+            self.show(self.index + 1, animated: true)
+        }
     }
 
     /// For dev builds' checks: which slide, and what each backdrop layer holds.
@@ -301,12 +430,14 @@ final class HeroView: FlippedView {
         let b = backdrops.enumerated().map { i, r in
             "b\(i)[top=\(backdropHost.sublayers?.last === r.layer) op=\(r.layer.opacity) img=\(r.layer.contents != nil) url=\(r.url?.path.split(separator: "/")[1] ?? "-")]"
         }.joined(separator: " ")
-        return "index=\(index) item=\(index < items.count ? items[index].Id : "-") front=\(front) " + b
+        return "index=\(index) item=\(index < items.count ? items[index].Id : "-") front=\(front) hold=\(String(format: "%.1f", target)) engaged=\(engaged) " + b + " " + trailer.debugState
     }
 
     /// Stops rotating while the page is not on screen.
     func setActive(_ on: Bool) {
-        if on { startCountdown() } else { timer?.invalidate(); timer = nil }
+        active = on
+        trailer.setActive(on)
+        if on { startCountdown() } else { timer?.invalidate(); timer = nil; leaving = false }
     }
 
     /// How far the hero has scrolled out of view, 0…1 (`--scroll-p`).
@@ -316,9 +447,12 @@ final class HeroView: FlippedView {
         scrollP = p
         CATransaction.begin(); CATransaction.setDisableActions(true)
         backdropHost.setAffineTransform(CGAffineTransform(translationX: 0, y: p * 0.09 * backdropHost.bounds.height))
+        trailer.host.setAffineTransform(CGAffineTransform(translationX: 0, y: p * 0.09 * backdropHost.bounds.height))
         copy.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: -34 * p))
         copy.layer?.opacity = Float(max(0, 1 - p * 1.45))
         CATransaction.commit()
+        // Under a quarter of it showing is not worth decoding.
+        trailer.setOffscreen(p > 0.75)
     }
 
     override func layout() {
@@ -333,6 +467,11 @@ final class HeroView: FlippedView {
         scrimBottom.frame = bounds
         scrimLeft.frame = bounds
         CATransaction.commit()
+        trailer.layout(bounds)
+        // `bottom-14 right-5 md:right-10`: two 32 pt buttons, 8 apart.
+        trailerControls.frame = NSRect(x: bounds.width - 40 - 72, y: bounds.height - 56 - 32, width: 72, height: 32)
+        muteButton.frame = NSRect(x: 0, y: 0, width: 32, height: 32)
+        pauseButton.frame = NSRect(x: 40, y: 0, width: 32, height: 32)
 
         let x = RowView.inset
         let width = min(672 - 40, bounds.width - x * 2)
