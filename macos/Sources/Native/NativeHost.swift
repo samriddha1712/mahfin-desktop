@@ -1,4 +1,5 @@
 import AppKit
+import Network
 import WebKit
 
 /*
@@ -24,6 +25,12 @@ final class NativeHost {
     private weak var container: NSView?
     private var ctx: NativeContext?
     private var session: NativeSession?
+    /// The session as the web last reported it; `session` may be the same
+    /// person on the configured address because the reported route did not
+    /// answer (the home route, away from home).
+    private var reported: NativeSession?
+    private var routeCheck = 0
+    private let pathMonitor = NWPathMonitor()
     private var current: ScreenView?
     private var cache: [NativeRoute: ScreenView] = [:]
     private var recent: [NativeRoute] = []
@@ -63,9 +70,15 @@ final class NativeHost {
         NativeHost.shared = self
         // A kept session draws the home page before the web app has booted.
         if let kept = Keychain.loadSession() {
-            adopt(kept)
+            adoptReported(kept)
             show(.home, animated: false)
         }
+        // Leaving the house (or coming back): the home route stops (or starts)
+        // answering, so check again which one to use.
+        pathMonitor.pathUpdateHandler = { [weak self] _ in
+            DispatchQueue.main.async { self?.settleRoute() }
+        }
+        pathMonitor.start(queue: .global(qos: .utility))
     }
 
     // MARK: From the web app
@@ -74,13 +87,14 @@ final class NativeHost {
         Theme.use(state.theme)
         barHeight = CGFloat(state.barHeight)
         if let s = state.session {
-            if s != session { adopt(s) }
+            if s != reported { adoptReported(s) }
             ctx?.downloadsConfigured = state.downloads
             Keychain.saveSession(state.rawSession)
         } else if state.path.hasPrefix("/login") {
             // Signed out: forget everything, show the web sign-in.
             Keychain.clearSession()
             session = nil
+            reported = nil
             ctx = nil
             cache.values.forEach { $0.removeFromSuperview() }
             cache.removeAll()
@@ -125,7 +139,53 @@ final class NativeHost {
 
     // MARK: Screens
 
+    /// Takes the session the web reported, then makes sure its route answers.
+    private func adoptReported(_ s: NativeSession) {
+        reported = s
+        adopt(s)
+        settleRoute()
+    }
+
+    /// Uses the reported route if it answers, else the configured address —
+    /// the home route only connects on the home network, and a session kept
+    /// from home must not leave every page blank everywhere else.
+    private func settleRoute() {
+        guard let r = reported, r.server != r.configuredServer else { return }
+        routeCheck += 1
+        let token = routeCheck
+        Task { @MainActor [weak self] in
+            let ok = await NativeHost.answers(r.server)
+            guard let self, token == self.routeCheck, self.reported == r else { return }
+            let want = ok ? r : r.on(r.configuredServer)
+            guard want != self.session else { return }
+            NSLog("Mahfin: %@ %@, using %@", r.server.host ?? "?", ok ? "answers" : "does not answer", want.server.host ?? "?")
+            let route = self.recent.last
+            let showing = !self.root.isHidden
+            self.adopt(want)
+            if showing, let route { self.show(route, animated: false) }
+        }
+    }
+
+    /// For dev builds' checks: the route reported and the route in use.
+    var debugRoute: String {
+        "reported=\(reported?.server.host ?? "-") using=\(session?.server.host ?? "-") configured=\(session?.configuredServer.host ?? "-")"
+    }
+
+    /// One small public request, two seconds at most.
+    private static func answers(_ server: URL) async -> Bool {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 2
+        config.timeoutIntervalForResource = 2
+        config.waitsForConnectivity = false
+        let net = URLSession(configuration: config)
+        defer { net.finishTasksAndInvalidate() }
+        guard let (_, response) = try? await net.data(from: server.appendingPathComponent("System/Info/Public")) else { return false }
+        return (response as? HTTPURLResponse)?.statusCode == 200
+    }
+
     private func adopt(_ s: NativeSession) {
+        if currentActive { current?.deactivate() }
+        currentActive = false
         session = s
         let ctx = NativeContext(session: s) { [weak self] path in self?.open(path) }
         ctx.openDialog = { [weak self] spec in self?.callNav?("openDialog", spec) }

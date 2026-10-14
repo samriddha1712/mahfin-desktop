@@ -45,6 +45,8 @@ enum DevAutomation {
                     }
                     if let c = window?.contentView { walk(c) }
                     print("[dev] buttons:", out.joined(separator: " | ")); fflush(stdout)
+                case "route":
+                    print("[dev] route", NativeHost.shared?.debugRoute ?? "-"); fflush(stdout)
                 case "badges":
                     var n = 0
                     func walk(_ v: NSView) {

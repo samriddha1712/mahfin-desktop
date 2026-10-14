@@ -15,7 +15,9 @@ struct NativeSession: Equatable {
     let userId: String
     let userName: String
     let deviceId: String
-    let server: URL
+    /// The route in use — the home network or the edge.
+    private(set) var server: URL
+    /// The server's address, which always answers.
     let configuredServer: URL
     let site: URL
 
@@ -30,8 +32,25 @@ struct NativeSession: Equatable {
         userName = d["userName"] as? String ?? ""
         deviceId = d["deviceId"] as? String ?? ""
         self.server = server
-        configuredServer = (d["configuredServer"] as? String).flatMap(URL.init(string:)) ?? server
+        let configured = (d["configuredServer"] as? String).flatMap(URL.init(string:)) ?? server
+        // A route is never the address (Mahfin's ROUTE_ONLY_ORIGINS): sessions
+        // signed in at home before 10-14 report the home route as both.
+        configuredServer = NativeSession.routeOnlyHosts.contains(configured.host?.lowercased() ?? "")
+            ? NativeSession.defaultServer : configured
         self.site = site
+    }
+
+    /// The edge: answers from anywhere.
+    static let defaultServer = URL(string: "https://jf.mahfin.online")!
+    /// Public DNS answers these with the home server's private address, so
+    /// they connect only on the home network.
+    static let routeOnlyHosts: Set<String> = ["lan.mahfin.online"]
+
+    /// The same person over another route.
+    func on(_ route: URL) -> NativeSession {
+        var s = self
+        s.server = route
+        return s
     }
 
     /// Credentials go only to Mahfin's own addresses, whatever a page says.
