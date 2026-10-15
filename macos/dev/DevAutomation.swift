@@ -78,6 +78,35 @@ enum DevAutomation {
                         try? png.write(to: URL(fileURLWithPath: arg))
                         print("[dev] webshot", arg); fflush(stdout)
                     }
+                case "screens0":
+                    // The web app draws every page itself from here on, as in a
+                    // browser: a script after Bridge.js says the shell draws nothing.
+                    if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
+                        let js = "if (window.jmpInfo && window.jmpInfo.native) window.jmpInfo.native.screens = 0"
+                        web.configuration.userContentController.addUserScript(
+                            WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+                        print("[dev] screens0"); fflush(stdout)
+                    }
+                case "webframe":
+                    // The web view alone, at WxH points from the top left (a phone, a laptop).
+                    let wh = arg.split(separator: "x").compactMap { Double($0) }
+                    if wh.count == 2, let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView,
+                       let c = window?.contentView {
+                        c.subviews.filter { !($0 is WKWebView) }.forEach { $0.isHidden = true }
+                        web.frame = NSRect(x: 0, y: c.bounds.height - wh[1], width: wh[0], height: wh[1])
+                        print("[dev] webframe", wh); fflush(stdout)
+                    }
+                case "webpdf":
+                    // The web view's visible area through WebKit's print renderer,
+                    // for pages its snapshot leaves blank (container queries, 3D decks).
+                    if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView {
+                        let cfg = WKPDFConfiguration()
+                        cfg.rect = NSRect(origin: .zero, size: web.bounds.size)
+                        if let data = try? await web.pdf(configuration: cfg) {
+                            try? data.write(to: URL(fileURLWithPath: arg))
+                            print("[dev] webpdf", arg); fflush(stdout)
+                        }
+                    }
                 case "webfull":
                     // Hand the whole window to the web view (native screens off), for checks of web-drawn themes.
                     if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView,
@@ -142,6 +171,34 @@ enum DevAutomation {
                     }
                     if let c = window?.contentView, let h = find(c) { print("[dev] hero", h.debugState); fflush(stdout) }
                 case "look": NativeHost.shared?.debugLook(arg)
+                case "hoverview":
+                    // `hoverview:RowView:2` — the pointer arrives on the third view of that type.
+                    let bits = arg.split(separator: ":").map(String.init)
+                    var found: [NSView] = []
+                    func collect(_ v: NSView) {
+                        if String(describing: type(of: v)) == bits.first, !v.isHidden { found.append(v) }
+                        v.subviews.forEach(collect)
+                    }
+                    if let c = window?.contentView { collect(c) }
+                    let n = bits.count > 1 ? Int(bits[1]) ?? 0 : 0
+                    if n < found.count, let e = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0,
+                                                                       windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil) {
+                        found[n].mouseEntered(with: e)
+                        print("[dev] hovering", bits.first ?? "", n, "of", found.count); fflush(stdout)
+                    }
+                case "deckhover":
+                    // The pointer arrives on the deck (its arrows show).
+                    func findDeck(_ v: NSView) -> DeckView? {
+                        if let d = v as? DeckView { return d }
+                        for s in v.subviews { if let d = findDeck(s) { return d } }
+                        return nil
+                    }
+                    if let c = window?.contentView, let d = findDeck(c),
+                       let e = NSEvent.enterExitEvent(with: .mouseEntered, location: .zero, modifierFlags: [], timestamp: 0,
+                                                      windowNumber: 0, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil) {
+                        d.mouseEntered(with: e)
+                        print("[dev] deckhover"); fflush(stdout)
+                    }
                 case "deckmove", "deckclick":
                     // A mouse event at `arg` (a fraction of the deck's width), mid height.
                     func findDeck(_ v: NSView) -> DeckView? {

@@ -332,11 +332,21 @@ final class RowView: FlippedView {
         // so a hovered card and its shadow are never clipped. The cards stay put.
         strip.frame = NSRect(x: 0, y: RowView.headerHeight - Self.padTop, width: bounds.width,
                              height: strip.cellHeight + Self.padTop + Self.padBottom)
-        // Arrows: 40 pt, 8 pt in from the edges, centred on the cards.
-        let mid = RowView.headerHeight + strip.cellHeight / 2 - 20
+        // Arrows: 40 pt, 8 pt in from the edges, centred on the cards'
+        // pictures — not on picture and caption, which put them 23 pt low.
+        let mid = RowView.headerHeight + artHeight / 2 - 20
         prev.frame = NSRect(x: 8, y: mid, width: 40, height: 40)
         next.frame = NSRect(x: bounds.width - 48, y: mid, width: 40, height: 40)
         updateArrows(animated: false)
+    }
+
+    /// The height of a card's picture, without the title under it.
+    private var artHeight: CGFloat {
+        switch kind {
+        case .posters, .entries, .wide: return strip.cellHeight - 46
+        case .cast: return 96
+        case .otts: return strip.cellHeight
+        }
     }
 
     // MARK: Hover and arrows

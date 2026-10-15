@@ -123,7 +123,9 @@ final class DeckView: FlippedView {
     private let trailer: HeroTrailer
     private let pager = FlippedView()
     private var dots: [CALayer] = []
-    private let dotFill = CALayer()
+    /// Previous and next, on the face card's two sides while the deck is hovered.
+    private let prevButton = DeckView.arrow(WebIcon.chevronLeft)
+    private let nextButton = DeckView.arrow(WebIcon.chevronRight)
     var onTint: ((NSColor) -> Void)?
 
     // The countdown (as HeroView's): re-anchored when its length changes.
@@ -143,8 +145,12 @@ final class DeckView: FlippedView {
         super.init(frame: .zero)
         layer?.masksToBounds = false
         addSubview(pager)
-        dotFill.backgroundColor = Theme.palette.accent.cgColor
-        dotFill.anchorPoint = CGPoint(x: 0, y: 0.5)
+        for b in [prevButton, nextButton] {
+            b.alphaValue = 0
+            addSubview(b)
+        }
+        prevButton.action = { [weak self] in guard let self else { return }; self.show(self.index - 1, animated: true) }
+        nextButton.action = { [weak self] in guard let self else { return }; self.show(self.index + 1, animated: true) }
         trailer.onDuration = { [weak self] s in
             self?.trailerSeconds = s > 0 ? s : nil
             self?.retarget()
@@ -164,9 +170,7 @@ final class DeckView: FlippedView {
         dots.forEach { $0.removeFromSuperlayer() }
         dots = items.map { _ in
             let d = CALayer()
-            d.backgroundColor = NSColor.white.withAlphaComponent(0.25).cgColor
             d.cornerRadius = 3
-            d.masksToBounds = true
             pager.layer?.addSublayer(d)
             return d
         }
@@ -237,33 +241,47 @@ final class DeckView: FlippedView {
     override func layout() {
         super.layout()
         for c in cards.values { c.frame = cardFrame }
-        // Top right, over the stack's own top edge (`right-7 top-3`), where it
-        // covers none of the artwork it pages.
-        pager.frame = NSRect(x: bounds.width - 28 - pagerWidth, y: 10, width: pagerWidth, height: 10)
+        // The deck's own controls belong to the face card, as on the web
+        // (HeroDeck): the dots centred along its foot, the one strip it leaves
+        // free, and the arrows on its two sides.
+        let face = cardFrame
+        pager.frame = NSRect(x: (face.width - pagerWidth) / 2, y: bounds.height - 10 - 8, width: pagerWidth, height: 10)
+        prevButton.frame = NSRect(x: 12, y: (bounds.height - 40) / 2, width: 40, height: 40)
+        nextButton.frame = NSRect(x: face.width - 12 - 40, y: (bounds.height - 40) / 2, width: 40, height: 40)
         layoutPager(animated: false)
+    }
+
+    private static func arrow(_ icon: String) -> PillButton {
+        let b = PillButton("", style: .tinted(NSColor.black.withAlphaComponent(0.5), NSColor.black.withAlphaComponent(0.75), Theme.palette.ink), height: 40)
+        b.svgIcon = icon
+        b.border = NSColor.white.withAlphaComponent(0.2)
+        b.layer?.cornerRadius = 20
+        return b
+    }
+
+    /// The arrows show while the pointer is on the deck.
+    private func showArrows(_ on: Bool) {
+        let show = on && items.count > 1
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.3
+            prevButton.animator().alphaValue = show ? 1 : 0
+            nextButton.animator().alphaValue = show ? 1 : 0
+        }
     }
 
     // MARK: Pager and countdown
 
-    private var pagerWidth: CGFloat { CGFloat(max(0, items.count - 1)) * (6 + 6) + 16 }
+    /// Plain dots, the active one in the accent (the IOS hero's own pager);
+    /// the countdown is the ring round the play button (DeckCard.runRing).
+    private var pagerWidth: CGFloat { CGFloat(items.count) * 6 + CGFloat(max(0, items.count - 1)) * 6 }
 
     private func layoutPager(animated: Bool) {
         CATransaction.begin()
         CATransaction.setAnimationDuration(animated ? 0.3 : 0)
         CATransaction.setDisableActions(!animated)
-        var x: CGFloat = 0
         for (i, d) in dots.enumerated() {
-            let w: CGFloat = i == index ? 16 : 6
-            d.frame = CGRect(x: x, y: 2, width: w, height: 6)
-            x += w + 6
-        }
-        CATransaction.commit()
-        CATransaction.begin(); CATransaction.setDisableActions(true)
-        if index < dots.count {
-            dotFill.removeFromSuperlayer()
-            dots[index].addSublayer(dotFill)
-            dotFill.bounds = CGRect(x: 0, y: 0, width: 16, height: 6)
-            dotFill.position = CGPoint(x: 0, y: 3)
+            d.frame = CGRect(x: CGFloat(i) * 12, y: 2, width: 6, height: 6)
+            d.backgroundColor = i == index ? Theme.palette.accent.cgColor : NSColor.white.withAlphaComponent(0.35).cgColor
         }
         CATransaction.commit()
     }
@@ -300,12 +318,8 @@ final class DeckView: FlippedView {
         timer = Timer.scheduledTimer(withTimeInterval: anchorRemaining, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.finish() }
         }
-        dotFill.removeAllAnimations()
-        let a = CABasicAnimation(keyPath: "transform.scale.x")
-        a.fromValue = anchorFrom
-        a.toValue = 1
-        a.duration = anchorRemaining
-        dotFill.add(a, forKey: "countdown")
+        for c in cards.values where c !== front { c.stopRing() }
+        front?.runRing(from: anchorFrom, duration: anchorRemaining)
     }
 
     private func finish() {
@@ -323,7 +337,10 @@ final class DeckView: FlippedView {
     func setActive(_ on: Bool) {
         active = on
         trailer.setActive(on)
-        if on { startCountdown() } else { timer?.invalidate(); timer = nil; leaving = false; engaged = false }
+        if on { startCountdown() } else {
+            timer?.invalidate(); timer = nil; leaving = false; engaged = false
+            cards.values.forEach { $0.stopRing() }
+        }
     }
 
     func setOffscreen(_ off: Bool) { trailer.setOffscreen(off) }
@@ -342,9 +359,13 @@ final class DeckView: FlippedView {
         addTrackingArea(t)
         tracking = t
     }
-    override func mouseEntered(with event: NSEvent) { setEngaged(true) }
+    override func mouseEntered(with event: NSEvent) {
+        setEngaged(true)
+        showArrows(true)
+    }
     override func mouseExited(with event: NSEvent) {
         setEngaged(false)
+        showArrows(false)
         peek(at: nil)
     }
     override func mouseMoved(with event: NSEvent) { peek(at: convert(event.locationInWindow, from: nil)) }
@@ -424,6 +445,8 @@ final class DeckCard: FlippedView {
     private let logoHost = FlippedView()
     private let bigTitle = makeLabel(font: Theme.display(34, .heavy), color: Theme.palette.ink, lines: 2)
     private let play = PillButton("", style: .accent, height: 44, fontSize: 15)
+    /// The countdown, sweeping round the play button from twelve o'clock.
+    private let ring = CAShapeLayer()
     private let name = makeLabel(font: Theme.text(15, .semibold), color: Theme.palette.ink)
     private let sub = makeLabel(font: Theme.text(12.5), color: Theme.palette.muted)
     private let heart = PillButton("", style: .tinted(NSColor.black.withAlphaComponent(0.4), NSColor.black.withAlphaComponent(0.55), Theme.palette.ink), height: 40)
@@ -500,6 +523,11 @@ final class DeckCard: FlippedView {
         face.addSubview(bigTitle)
         play.icon = .play
         play.action = { [weak self] in self?.onPlay?() }
+        ring.fillColor = nil
+        ring.strokeColor = Theme.palette.accent.cgColor
+        ring.lineWidth = 2.2
+        ring.lineCap = .round
+        ring.strokeEnd = 0
         name.stringValue = item.Name ?? ""
         sub.stringValue = item.isSeries ? "Open the series" : "More info"
         heart.svgIcon = WebIcon.heart(filled: item.UserData?.IsFavorite == true)
@@ -555,6 +583,26 @@ final class DeckCard: FlippedView {
         Task {
             try? await api.send(.jellyfin, on ? "POST" : "DELETE", "UserFavoriteItems/\(id)", ["userId": api.session.userId])
         }
+    }
+
+    /// The countdown from `from` (0…1) to full over `duration` seconds.
+    func runRing(from: Double, duration: Double) {
+        ring.removeAllAnimations()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        ring.strokeEnd = 1
+        CATransaction.commit()
+        let a = CABasicAnimation(keyPath: "strokeEnd")
+        a.fromValue = from
+        a.toValue = 1
+        a.duration = duration
+        ring.add(a, forKey: "countdown")
+    }
+
+    func stopRing() {
+        ring.removeAllAnimations()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        ring.strokeEnd = 0
+        CATransaction.commit()
     }
 
     /// The card's place in the deck (globals.css `.studio-hero-card[data-depth]`).
@@ -639,6 +687,16 @@ final class DeckCard: FlippedView {
         // Bottom left: play, then the title and what it opens.
         play.frame = NSRect(x: 20, y: b.height - 20 - 44, width: 44, height: 44)
         play.layer?.cornerRadius = 22
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        if ring.superlayer == nil { face.layer?.addSublayer(ring) }
+        let rr = play.frame.insetBy(dx: -5, dy: -5)
+        ring.frame = rr
+        // From the top, clockwise on screen (the face view is flipped).
+        let path = CGMutablePath()
+        path.addArc(center: CGPoint(x: rr.width / 2, y: rr.height / 2), radius: rr.width / 2 - 1.1,
+                    startAngle: -.pi / 2, endAngle: .pi * 1.5, clockwise: false)
+        ring.path = path
+        CATransaction.commit()
         let ns = name.fitSize, ss = sub.fitSize
         let textW = min(b.width * 0.5, max(ns.width, ss.width))
         name.frame = NSRect(x: 76, y: play.frame.midY - ns.height - 1, width: textW, height: ns.height)
@@ -712,7 +770,8 @@ final class DeckCard: FlippedView {
     var debugState: String {
         let f = holder.frame
         return "\(title) \(depth) view=\(Int(frame.minX)),\(Int(frame.width))x\(Int(frame.height)) holder=\(Int(f.minX))..\(Int(f.maxX)) "
-            + "opacity=\(holder.opacity) picture=\(picture.layer.contents != nil) clips=\(layer?.masksToBounds ?? false) hidden=\(isHidden)"
+            + "opacity=\(holder.opacity) picture=\(picture.layer.contents != nil) clips=\(layer?.masksToBounds ?? false) hidden=\(isHidden) "
+            + "ring=\(String(format: "%.2f", Double(ring.presentation()?.strokeEnd ?? ring.strokeEnd)))"
     }
 }
 
@@ -961,6 +1020,15 @@ final class GenreChipsView: FlippedView {
     private let scroll = StripScrollView()
     private let strip = FlippedView()
     private var chips: [PillButton] = []
+    /// At each end of the strip while it is hovered, toward where there is
+    /// more (the web's ScrollStrip): a mouse has no other way along it.
+    private let prev = NudgeButton(direction: -1, diameter: 36, icon: 16)
+    private let next = NudgeButton(direction: 1, diameter: 36, icon: 16)
+    // Sideways, so a plain gradient: AppKit's flipping only ever turns y.
+    private let fadeLeft = CAGradientLayer()
+    private let fadeRight = CAGradientLayer()
+    private var hovered = false
+    private var tracking: NSTrackingArea?
     var onHeight: (() -> Void)?
 
     init(ctx: NativeContext) {
@@ -973,6 +1041,25 @@ final class GenreChipsView: FlippedView {
         scroll.verticalScrollElasticity = .none
         scroll.documentView = strip
         addSubview(scroll)
+        // The arrows sit on a fade into the page, not straight on a chip.
+        let v = Theme.palette.void
+        for (f, flip) in [(fadeLeft, false), (fadeRight, true)] {
+            f.colors = (flip ? [v.withAlphaComponent(0), v.withAlphaComponent(0.85), v] : [v, v.withAlphaComponent(0.85), v.withAlphaComponent(0)]).map(\.cgColor)
+            f.startPoint = CGPoint(x: 0, y: 0.5)
+            f.endPoint = CGPoint(x: 1, y: 0.5)
+            f.opacity = 0
+            layer?.addSublayer(f)
+        }
+        for b in [prev, next] {
+            b.alphaValue = 0
+            addSubview(b)
+        }
+        prev.action = { [weak self] in self?.page(-1) }
+        next.action = { [weak self] in self?.page(1) }
+        scroll.contentView.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scroll.contentView, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateArrows(animated: true) }
+        }
         isHidden = true
         load()
     }
@@ -1020,5 +1107,57 @@ final class GenreChipsView: FlippedView {
             x = c.frame.maxX + 12
         }
         strip.frame = NSRect(x: 0, y: 0, width: max(x, scroll.bounds.width), height: bounds.height)
+        let s = scroll.frame
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        fadeLeft.frame = CGRect(x: s.minX, y: 0, width: 64, height: bounds.height)
+        fadeRight.frame = CGRect(x: s.maxX - 64, y: 0, width: 64, height: bounds.height)
+        CATransaction.commit()
+        prev.frame = NSRect(x: s.minX + 6, y: (bounds.height - 36) / 2, width: 36, height: 36)
+        next.frame = NSRect(x: s.maxX - 6 - 36, y: (bounds.height - 36) / 2, width: 36, height: 36)
+        updateArrows(animated: false)
     }
+
+    // MARK: Arrows
+
+    private func page(_ dir: CGFloat) {
+        let clip = scroll.contentView
+        let maxX = max(0, strip.frame.width - clip.bounds.width)
+        let x = min(maxX, max(0, clip.bounds.origin.x + dir * clip.bounds.width * 0.8))
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.35
+            ctx.allowsImplicitAnimation = true
+            clip.animator().setBoundsOrigin(NSPoint(x: x, y: 0))
+        }
+        scroll.reflectScrolledClipView(clip)
+    }
+
+    private func updateArrows(animated: Bool) {
+        let clip = scroll.contentView.bounds
+        let canLeft = clip.minX > 8, canRight = clip.maxX < strip.frame.width - 8
+        let l: CGFloat = hovered && canLeft ? 1 : 0, r: CGFloat = hovered && canRight ? 1 : 0
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = animated ? 0.2 : 0
+            prev.animator().alphaValue = l
+            next.animator().alphaValue = r
+        }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(animated ? 0.2 : 0)
+        fadeLeft.opacity = Float(l)
+        fadeRight.opacity = Float(r)
+        CATransaction.commit()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(t)
+        tracking = t
+    }
+    override func mouseEntered(with event: NSEvent) {
+        Hover.enter(self, area: { [unowned self] in self.bounds },
+                    begin: { [weak self] in self?.hovered = true; self?.updateArrows(animated: true) },
+                    end: { [weak self] in self?.hovered = false; self?.updateArrows(animated: true) })
+    }
+    override func mouseExited(with event: NSEvent) { Hover.exit(self) }
 }
