@@ -89,6 +89,9 @@ final class BoardTop: FlippedView, HomeTop {
         // leaves the first row of posters on screen (the web's clamp).
         let deckH = min(deckW / 2.25, min(560, max(280, viewport - 500)))
         deck.frame = NSRect(x: x, y: top, width: deckW, height: deckH)
+        // Beside the deck the panel is the deck's height, and holds as many
+        // titles as fit (owner's ask, 2026-10-16); under it, three.
+        watching.fixedHeight = wide ? deckH : nil
         let wh = watching.height(for: wide ? sideW : inner)
         if wide {
             watching.frame = NSRect(x: x + deckW + 24, y: top, width: sideW, height: wh)
@@ -197,6 +200,7 @@ final class DeckView: FlippedView {
         // Gone past the deck: let the card finish leaving, then drop it.
         for (id, card) in cards where !visible.contains(id) {
             cards[id] = nil
+            card.setDepth(.out, animated: animated)   // a jump of two: off to the left too
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { card.removeFromSuperview() }
         }
         // Front-to-back order for drawing and for clicks.
@@ -334,12 +338,46 @@ final class DeckView: FlippedView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let tracking { removeTrackingArea(tracking) }
-        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        let t = NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect], owner: self)
         addTrackingArea(t)
         tracking = t
     }
     override func mouseEntered(with event: NSEvent) { setEngaged(true) }
-    override func mouseExited(with event: NSEvent) { setEngaged(false) }
+    override func mouseExited(with event: NSEvent) {
+        setEngaged(false)
+        peek(at: nil)
+    }
+    override func mouseMoved(with event: NSEvent) { peek(at: convert(event.locationInWindow, from: nil)) }
+
+    /// The back card whose peeking edge is under the pointer, leaning out.
+    private weak var peeking: DeckCard?
+
+    /// Back cards draw past their own views, right of the face; that strip is
+    /// this view's, so it finds the card there itself — the nearer one first.
+    private func peekCard(at p: NSPoint?) -> DeckCard? {
+        guard let p, p.x > cardFrame.maxX, !pager.frame.insetBy(dx: -4, dy: -8).contains(p) else { return nil }
+        let backs = cards.values.compactMap { c -> (Int, DeckCard)? in
+            if case .back(let n) = c.depth { return (n, c) }
+            return nil
+        }
+        return backs.sorted { $0.0 < $1.0 }.first { $0.1.drawnFrame.contains(p) }?.1
+    }
+
+    private func peek(at p: NSPoint?) {
+        let card = peekCard(at: p)
+        guard card !== peeking else { return }
+        peeking?.setLeaning(false)
+        card?.setLeaning(true)
+        peeking = card
+        window?.invalidateCursorRects(for: self)
+    }
+
+    override func resetCursorRects() {
+        let strip = NSRect(x: cardFrame.maxX, y: 0, width: max(0, bounds.width - cardFrame.maxX), height: bounds.height)
+        addCursorRect(strip, cursor: .pointingHand)
+    }
+
+    override func mouseDown(with event: NSEvent) {}   // so the click's mouseUp comes here
 
     override func mouseUp(with event: NSEvent) {
         // A dot turns the deck to its card.
@@ -347,6 +385,13 @@ final class DeckView: FlippedView {
         for (i, d) in dots.enumerated() where d.frame.insetBy(dx: -4, dy: -8).contains(p) {
             show(i, animated: true)
             return
+        }
+        // A card behind the face comes to the front.
+        let q = convert(event.locationInWindow, from: nil)
+        if let card = peekCard(at: q), let i = items.firstIndex(where: { cards[$0.Id] === card }) {
+            peeking = nil
+            show(i, animated: true)
+            peek(at: q)   // whatever now peeks under the pointer leans out
         }
     }
 
@@ -513,7 +558,22 @@ final class DeckCard: FlippedView {
     }
 
     /// The card's place in the deck (globals.css `.studio-hero-card[data-depth]`).
-    func setDepth(_ d: Depth, animated: Bool) {
+    /// Whether the pointer is on this back card's peeking edge (DeckView).
+    private(set) var leaning = false
+
+    /// Leans out a little, straightens, lifts its shade (globals.css
+    /// `.studio-hero-card[data-depth="1"]:hover`). Back cards only.
+    func setLeaning(_ on: Bool) {
+        guard on != leaning, case .back = depth else { return }
+        leaning = on
+        setDepth(depth, animated: true, duration: 0.45)
+    }
+
+    /// The card's drawn extent in its own coordinates (the transform included).
+    var drawnFrame: CGRect { holder.frame }
+
+    func setDepth(_ d: Depth, animated: Bool, duration: CFTimeInterval = 0.62) {
+        if d != depth { leaning = false }
         depth = d
         let w = bounds.width
         var t = CATransform3DIdentity
@@ -524,11 +584,16 @@ final class DeckCard: FlippedView {
             break
         case .back(let n):
             t.m34 = -1 / 1400
-            let (dx, deg, sy): (CGFloat, CGFloat, CGFloat) = n == 1 ? (0.08, -7, 0.9) : (0.152, -11, 0.79)
+            let (dx, deg, sy): (CGFloat, CGFloat, CGFloat) = switch (n, leaning) {
+            case (1, false): (0.08, -7, 0.9)
+            case (1, true): (0.105, -4.5, 0.92)
+            case (_, false): (0.152, -11, 0.79)
+            case (_, true): (0.18, -8, 0.82)
+            }
             t = CATransform3DTranslate(t, dx * w, 0, 0)
             t = CATransform3DRotate(t, deg * .pi / 180, 0, 1, 0)
             t = CATransform3DScale(t, 1, sy, 1)
-            dark = n == 1 ? 0.4 : 0.66
+            dark = n == 1 ? (leaning ? 0.18 : 0.4) : (leaning ? 0.38 : 0.66)
         case .out:
             t = CATransform3DTranslate(t, -1.04 * w, 0, 0)
             t = CATransform3DScale(t, 0.92, 0.92, 1)
@@ -536,7 +601,7 @@ final class DeckCard: FlippedView {
             dark = 0.5
         }
         CATransaction.begin()
-        CATransaction.setAnimationDuration(animated ? 0.62 : 0)
+        CATransaction.setAnimationDuration(animated ? duration : 0)
         CATransaction.setAnimationTimingFunction(Theme.expoOut)
         CATransaction.setDisableActions(!animated)
         holder.transform = t
@@ -702,7 +767,7 @@ final class NowWatchingView: FlippedView {
             ]) { r in
                 guard let self else { return }
                 var seen = Set<String>()
-                let items = r.Items.filter { seen.insert(($0.isEpisode ? $0.SeriesId : $0.Id) ?? $0.Id).inserted }.prefix(3)
+                let items = r.Items.filter { seen.insert(($0.isEpisode ? $0.SeriesId : $0.Id) ?? $0.Id).inserted }.prefix(12)
                 self.rows.forEach { $0.removeFromSuperview() }
                 self.rows = items.map { item in
                     let row = NowWatchingRow(item: item, ctx: self.ctx)
@@ -710,13 +775,36 @@ final class NowWatchingView: FlippedView {
                     return row
                 }
                 self.isHidden = self.rows.isEmpty
+                // New rows start at a zero frame: lay them out even when the
+                // panel's own size has not changed (1.3.9 stacked them all in
+                // its top left corner after the first refresh).
+                self.needsLayout = true
                 self.onHeight?()
             }
         }
     }
 
+    /// The deck's height, when the panel sits beside it; nil under it.
+    var fixedHeight: CGFloat? {
+        didSet { if fixedHeight != oldValue { needsLayout = true } }
+    }
+
+    private static let head: CGFloat = 20 + 28 + 16
+    private static let row: CGFloat = 68
+    private static let gap: CGFloat = 16
+
+    /// How many rows the panel shows: what fits beside the deck, else three.
+    private var fit: Int {
+        guard let h = fixedHeight else { return min(3, rows.count) }
+        let room = h - NowWatchingView.head - 20
+        return min(rows.count, max(1, Int((room + NowWatchingView.gap) / (NowWatchingView.row + NowWatchingView.gap))))
+    }
+
     func height(for width: CGFloat) -> CGFloat {
-        isHidden ? 0 : 20 + 28 + 16 + CGFloat(rows.count) * 68 + CGFloat(max(0, rows.count - 1)) * 16 + 20
+        if isHidden { return 0 }
+        if let h = fixedHeight { return h }
+        let n = CGFloat(fit)
+        return NowWatchingView.head + n * NowWatchingView.row + max(0, n - 1) * NowWatchingView.gap + 20
     }
 
     override func layout() {
@@ -728,10 +816,12 @@ final class NowWatchingView: FlippedView {
         bar.frame = CGRect(x: 20, y: 20 + (28 - 19) / 2, width: 5, height: 19)
         CATransaction.commit()
         heading.frame = NSRect(x: 35, y: 20 + (28 - hs.height) / 2, width: bounds.width - 55, height: hs.height)
-        var y: CGFloat = 20 + 28 + 16
-        for r in rows {
-            r.frame = NSRect(x: 20, y: y, width: bounds.width - 40, height: 68)
-            y += 68 + 16
+        var y = NowWatchingView.head
+        let shown = fit
+        for (i, r) in rows.enumerated() {
+            r.isHidden = i >= shown
+            r.frame = NSRect(x: 20, y: y, width: bounds.width - 40, height: NowWatchingView.row)
+            y += NowWatchingView.row + NowWatchingView.gap
         }
     }
 }
@@ -745,6 +835,11 @@ final class NowWatchingRow: FlippedView {
     private let dim = CALayer()
     private let title = makeLabel(font: Theme.text(15, .semibold), color: Theme.palette.ink)
     private let meta = makeLabel(font: Theme.text(12), color: Theme.palette.muted)
+    private let percent = makeLabel(font: Theme.text(11, .semibold), color: Theme.palette.accent)
+    private let track = CALayer()
+    private let fill = CALayer()
+    /// The thumbnail's rounded clip: picture, shade, play mark and progress.
+    private let box = CALayer()
     private var chips: [NSView] = []
     private var tracking: NSTrackingArea?
 
@@ -752,17 +847,31 @@ final class NowWatchingRow: FlippedView {
         self.item = item
         self.ctx = ctx
         super.init(frame: .zero)
-        thumb.layer.cornerRadius = 12
-        thumb.layer.cornerCurve = .continuous
-        thumb.layer.backgroundColor = Theme.palette.void2.cgColor
-        layer?.addSublayer(thumb.layer)
+        box.cornerRadius = 12
+        box.cornerCurve = .continuous
+        box.masksToBounds = true
+        box.backgroundColor = Theme.palette.void2.cgColor
+        box.borderColor = NSColor.white.withAlphaComponent(0.1).cgColor
+        box.borderWidth = 1
+        layer?.addSublayer(box)
+        box.addSublayer(thumb.layer)
+        // How far in, along the thumbnail's foot (the Surprise theme's resume
+        // cards, and every Continue watching card).
+        track.backgroundColor = NSColor.white.withAlphaComponent(0.2).cgColor
+        fill.backgroundColor = Theme.palette.accent.cgColor
+        fill.anchorPoint = CGPoint(x: 0, y: 0.5)
+        track.addSublayer(fill)
+        track.isHidden = item.progress == nil
+        percent.stringValue = item.progress.map { "\(Int(($0 * 100).rounded()))%" } ?? ""
+        percent.isHidden = item.progress == nil
+        addSubview(percent)
         dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.25).cgColor
-        dim.cornerRadius = 12
-        layer?.addSublayer(dim)
+        box.addSublayer(dim)
         playDot.fillColor = NSColor.white.withAlphaComponent(0.25).cgColor
         playDot.strokeColor = NSColor.white.withAlphaComponent(0.3).cgColor
         playDot.lineWidth = 1
-        layer?.addSublayer(playDot)
+        box.addSublayer(playDot)
+        box.addSublayer(track)
         thumb.load(ctx.art.wide(item, width: 320), points: 120, scale: NSScreen.main?.backingScaleFactor ?? 2)
         title.stringValue = item.isEpisode ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? "")
         addSubview(title)
@@ -791,10 +900,14 @@ final class NowWatchingRow: FlippedView {
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        thumb.layer.frame = CGRect(x: 0, y: 0, width: 120, height: 68)
-        dim.frame = thumb.layer.frame
+        box.frame = CGRect(x: 0, y: 0, width: 120, height: 68)
+        thumb.layer.frame = box.bounds
+        dim.frame = box.bounds
         let r: CGFloat = 16
         playDot.path = CGPath(ellipseIn: CGRect(x: 60 - r, y: 34 - r, width: r * 2, height: r * 2), transform: nil)
+        track.frame = CGRect(x: 0, y: 65, width: 120, height: 3)
+        fill.bounds = CGRect(x: 0, y: 0, width: 120 * (item.progress ?? 0), height: 3)
+        fill.position = CGPoint(x: 0, y: 1.5)
         CATransaction.commit()
         let x: CGFloat = 134
         let w = bounds.width - x
@@ -808,8 +921,10 @@ final class NowWatchingRow: FlippedView {
             cx = c.frame.maxX + 6
         }
         if !chips.isEmpty { y = (chips.first?.frame.maxY ?? y) + 6 }
-        let ms = meta.fitSize
-        meta.frame = NSRect(x: x, y: y, width: min(ms.width, w), height: ms.height)
+        let ms = meta.fitSize, ps = percent.fitSize
+        let room = w - (percent.isHidden ? 0 : ps.width + 8)
+        meta.frame = NSRect(x: x, y: y, width: min(ms.width, room), height: ms.height)
+        percent.frame = NSRect(x: meta.frame.maxX + 8, y: y + (ms.height - ps.height) / 2, width: ps.width, height: ps.height)
     }
 
     override func updateTrackingAreas() {
@@ -842,7 +957,7 @@ final class NowWatchingRow: FlippedView {
 @MainActor
 final class GenreChipsView: FlippedView {
     private let ctx: NativeContext
-    private let label = makeLabel("Find by\ngenre", font: Theme.display(15, .semibold), color: Theme.palette.ink, lines: 2)
+    private let label = makeLabel("Find by genre", font: Theme.display(15, .semibold), color: Theme.palette.ink)
     private let scroll = StripScrollView()
     private let strip = FlippedView()
     private var chips: [PillButton] = []
@@ -893,9 +1008,11 @@ final class GenreChipsView: FlippedView {
 
     override func layout() {
         super.layout()
-        let ls = label.sizeThatFits(NSSize(width: 90, height: 60))
-        label.frame = NSRect(x: 0, y: (bounds.height - ls.height) / 2, width: 90, height: ls.height)
-        scroll.frame = NSRect(x: 106, y: 0, width: max(0, bounds.width - 106), height: bounds.height)
+        // On one line, as the web's (`whitespace-nowrap`), with the strip 16 after it.
+        let ls = label.fitSize
+        label.frame = NSRect(x: 0, y: (bounds.height - ls.height) / 2, width: ls.width, height: ls.height)
+        let sx = ls.width + 16
+        scroll.frame = NSRect(x: sx, y: 0, width: max(0, bounds.width - sx), height: bounds.height)
         var x: CGFloat = 0
         for c in chips {
             c.sizeToFit()

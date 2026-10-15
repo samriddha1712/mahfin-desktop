@@ -142,6 +142,23 @@ enum DevAutomation {
                     }
                     if let c = window?.contentView, let h = find(c) { print("[dev] hero", h.debugState); fflush(stdout) }
                 case "look": NativeHost.shared?.debugLook(arg)
+                case "deckmove", "deckclick":
+                    // A mouse event at `arg` (a fraction of the deck's width), mid height.
+                    func findDeck(_ v: NSView) -> DeckView? {
+                        if let d = v as? DeckView { return d }
+                        for s in v.subviews { if let d = findDeck(s) { return d } }
+                        return nil
+                    }
+                    if let w = window, let c = w.contentView, let d = findDeck(c) {
+                        let local = NSPoint(x: d.bounds.width * CGFloat(Double(arg) ?? 0.5), y: d.bounds.midY)
+                        let at = d.convert(local, to: nil)
+                        func ev(_ t: NSEvent.EventType) -> NSEvent? {
+                            NSEvent.mouseEvent(with: t, location: at, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                               windowNumber: w.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+                        }
+                        if parts[0] == "deckmove" { ev(.mouseMoved).map(d.mouseMoved) } else { ev(.leftMouseUp).map(d.mouseUp) }
+                        print("[dev]", parts[0], arg, "at", local); fflush(stdout)
+                    }
                 case "deck":
                     func findDeck(_ v: NSView) -> DeckView? {
                         if let d = v as? DeckView { return d }
