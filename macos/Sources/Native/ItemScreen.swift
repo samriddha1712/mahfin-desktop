@@ -34,9 +34,6 @@ final class ItemScreen: ScreenView {
     private let pick = PillButton("Pick", style: .glass, height: 46, fontSize: 15)
     private let download = PillButton("Download", style: .glass, height: 46, fontSize: 15)
     private let recommend = PillButton("Recommend", style: .glass, height: 46, fontSize: 15)
-    /// A show partly here: the way to ask for the seasons that are not.
-    private let requestSeasons = PillButton("Request seasons", style: .glass, height: 46, fontSize: 15)
-    private var moreSeasons = false
     private var picked = false
     private var pickBusy = false
     private var pickFull = false
@@ -94,8 +91,7 @@ final class ItemScreen: ScreenView {
         pick.svgIcon = WebIcon.sparkle
         download.svgIcon = WebIcon.download
         recommend.svgIcon = WebIcon.star
-        requestSeasons.icon = .plus
-        for b in [collection, pick, download, recommend, requestSeasons] { b.radius = 12 }
+        for b in [collection, pick, download, recommend] { b.radius = 12 }
         for b in actionButtons { document.addSubview(b) }
         document.addSubview(episodes)
         document.addSubview(meter)
@@ -111,7 +107,6 @@ final class ItemScreen: ScreenView {
         collection.action = { [weak self] in self?.dialog("collection") }
         download.action = { [weak self] in self?.dialog("download") }
         recommend.action = { [weak self] in self?.dialog("recommend") }
-        requestSeasons.action = { [weak self] in self?.dialog("request") }
         pick.action = { [weak self] in self?.togglePick() }
         ctx.onChange { [weak self] in self?.refreshButtons(); self?.loadPick() }
         watched.action = { [weak self] in self?.toggleWatched() }
@@ -119,20 +114,30 @@ final class ItemScreen: ScreenView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Web order: Play, WatchList, Request seasons, Collection, Watched, Pick, Download, Recommend.
-    private var actionButtons: [PillButton] { [play, favorite, requestSeasons, collection, watched, pick, download, recommend] }
+    /// Web order: Play, WatchList, Collection, Watched, Pick, Download, Recommend.
+    private var actionButtons: [PillButton] { [play, favorite, collection, watched, pick, download, recommend] }
 
-    /// Whether Seerr has seasons of this show it has neither got nor been
-    /// asked for (Mahfin's `hasMoreSeasons`: status 3, 4 and 5 are settled).
+    /// "Request seasons" at the end of the season pills, while Seerr has
+    /// seasons of the show it has neither got nor been asked for (Mahfin's
+    /// `hasMoreSeasons`: status 3, 4 and 5 are settled). On an episode's page
+    /// the show is looked up for its TMDB id.
     private func loadMoreSeasons() {
-        guard let item, item.isSeries, let tmdb = item.tmdbId else { moreSeasons = false; return }
+        guard let item, item.isSeries || item.isEpisode else { episodes.setRequest(nil); return }
         let api = ctx.api
+        let uid = api.session.userId
         Task { [weak self] in
+            var show = item
+            if item.isEpisode, let sid = item.SeriesId,
+               let s = try? await api.fetch(JFItem.self, .jellyfin, "Items/\(sid)", ["userId": uid]) {
+                show = s
+            }
+            guard show.isSeries, let tmdb = show.tmdbId else { self?.episodes.setRequest(nil); return }
             struct Details: Codable { struct S: Codable { var seasonNumber: Int; var status: Int? }; var seasons: [S]? }
             await api.load(Details.self, .mahfin, "/api/discover/details", ["type": "tv", "id": String(tmdb)]) { d in
                 guard let self else { return }
-                self.moreSeasons = (d.seasons ?? []).contains { $0.seasonNumber > 0 && ![3, 4, 5].contains($0.status ?? 0) }
-                self.refreshButtons()
+                let more = (d.seasons ?? []).contains { $0.seasonNumber > 0 && ![3, 4, 5].contains($0.status ?? 0) }
+                self.episodes.setRequest(more ? { [weak self] in self?.ctx.openDialog?("request:\(show.Id)") } : nil)
+                self.needsLayout = true
             }
         }
     }
@@ -304,7 +309,6 @@ final class ItemScreen: ScreenView {
         if picked { pick.style = .tinted(p.panel, NSColor.white.withAlphaComponent(0.1), p.accent); pick.border = p.glassBorder } else { pick.style = .glass }
         download.isHidden = item.isPerson || !ctx.downloadsConfigured
         recommend.isHidden = item.isPerson
-        requestSeasons.isHidden = !(item.isSeries && moreSeasons)
         // Download and Recommend wear the poster's tint, as WatchList does.
         for b in [download, recommend] {
             if let tint {
@@ -451,6 +455,11 @@ final class EpisodesView: FlippedView {
     private let ctx: NativeContext
     private let heading = makeLabel(font: Theme.display(25.6, .bold), color: Theme.palette.ink)
     private var seasonButtons: [PillButton] = []
+    /// "Request seasons", after the pills, only while there are more to ask for.
+    private let requestButton = PillButton("Request seasons", style: .tinted(.clear, Theme.palette.accent.withAlphaComponent(0.1), Theme.palette.accent),
+                                           height: 36, fontSize: 13.5)
+    /// Its outline, dashed (the web's `border-dashed border-accent/55`).
+    private let requestOutline = CAShapeLayer()
     private var rows: [EpisodeRow] = []
     private var seasons: [JFItem] = []
     private var selected: String?
@@ -462,6 +471,21 @@ final class EpisodesView: FlippedView {
         self.ctx = ctx
         super.init(frame: .zero)
         addSubview(heading)
+        requestButton.icon = .plus
+        requestButton.isHidden = true
+        requestOutline.fillColor = nil
+        requestOutline.strokeColor = Theme.palette.accent.withAlphaComponent(0.55).cgColor
+        requestOutline.lineWidth = 1
+        requestOutline.lineDashPattern = [4, 3]
+        requestButton.layer?.addSublayer(requestOutline)
+        addSubview(requestButton)
+    }
+
+    /// Shows "Request seasons" with this action, or hides it for nil.
+    func setRequest(_ action: (() -> Void)?) {
+        requestButton.action = action
+        requestButton.isHidden = action == nil
+        needsLayout = true
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
@@ -547,6 +571,14 @@ final class EpisodesView: FlippedView {
             b.sizeToFit()
             b.frame = NSRect(x: x, y: top, width: b.frame.width, height: 36)
             x = b.frame.maxX + 8
+        }
+        if !requestButton.isHidden {
+            requestButton.sizeToFit()
+            requestButton.frame = NSRect(x: x, y: top, width: requestButton.frame.width, height: 36)
+            CATransaction.begin(); CATransaction.setDisableActions(true)
+            requestOutline.frame = requestButton.bounds
+            requestOutline.path = CGPath(roundedRect: requestButton.bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 17.5, cornerHeight: 17.5, transform: nil)
+            CATransaction.commit()
         }
         var y = top + 36 + 16
         for r in rows {
