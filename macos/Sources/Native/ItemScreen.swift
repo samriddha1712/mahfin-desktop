@@ -34,6 +34,9 @@ final class ItemScreen: ScreenView {
     private let pick = PillButton("Pick", style: .glass, height: 46, fontSize: 15)
     private let download = PillButton("Download", style: .glass, height: 46, fontSize: 15)
     private let recommend = PillButton("Recommend", style: .glass, height: 46, fontSize: 15)
+    /// A show partly here: the way to ask for the seasons that are not.
+    private let requestSeasons = PillButton("Request seasons", style: .glass, height: 46, fontSize: 15)
+    private var moreSeasons = false
     private var picked = false
     private var pickBusy = false
     private var pickFull = false
@@ -91,7 +94,8 @@ final class ItemScreen: ScreenView {
         pick.svgIcon = WebIcon.sparkle
         download.svgIcon = WebIcon.download
         recommend.svgIcon = WebIcon.star
-        for b in [collection, pick, download, recommend] { b.radius = 12 }
+        requestSeasons.icon = .plus
+        for b in [collection, pick, download, recommend, requestSeasons] { b.radius = 12 }
         for b in actionButtons { document.addSubview(b) }
         document.addSubview(episodes)
         document.addSubview(meter)
@@ -107,6 +111,7 @@ final class ItemScreen: ScreenView {
         collection.action = { [weak self] in self?.dialog("collection") }
         download.action = { [weak self] in self?.dialog("download") }
         recommend.action = { [weak self] in self?.dialog("recommend") }
+        requestSeasons.action = { [weak self] in self?.dialog("request") }
         pick.action = { [weak self] in self?.togglePick() }
         ctx.onChange { [weak self] in self?.refreshButtons(); self?.loadPick() }
         watched.action = { [weak self] in self?.toggleWatched() }
@@ -114,8 +119,23 @@ final class ItemScreen: ScreenView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Web order: Play, WatchList, Collection, Watched, Pick, Download, Recommend.
-    private var actionButtons: [PillButton] { [play, favorite, collection, watched, pick, download, recommend] }
+    /// Web order: Play, WatchList, Request seasons, Collection, Watched, Pick, Download, Recommend.
+    private var actionButtons: [PillButton] { [play, favorite, requestSeasons, collection, watched, pick, download, recommend] }
+
+    /// Whether Seerr has seasons of this show it has neither got nor been
+    /// asked for (Mahfin's `hasMoreSeasons`: status 3, 4 and 5 are settled).
+    private func loadMoreSeasons() {
+        guard let item, item.isSeries, let tmdb = item.tmdbId else { moreSeasons = false; return }
+        let api = ctx.api
+        Task { [weak self] in
+            struct Details: Codable { struct S: Codable { var seasonNumber: Int; var status: Int? }; var seasons: [S]? }
+            await api.load(Details.self, .mahfin, "/api/discover/details", ["type": "tv", "id": String(tmdb)]) { d in
+                guard let self else { return }
+                self.moreSeasons = (d.seasons ?? []).contains { $0.seasonNumber > 0 && ![3, 4, 5].contains($0.status ?? 0) }
+                self.refreshButtons()
+            }
+        }
+    }
 
     private func dialog(_ kind: String) {
         ctx.openDialog?("\(kind):\(id)")
@@ -239,6 +259,7 @@ final class ItemScreen: ScreenView {
         cast.people = Array((item.People ?? []).prefix(20))
         meter.show(for: item)
         loadPick()
+        loadMoreSeasons()
         if item.isSeries || item.isEpisode {
             episodes.isHidden = false
             episodes.load(seriesId: item.isSeries ? item.Id : (item.SeriesId ?? item.Id),
@@ -283,6 +304,7 @@ final class ItemScreen: ScreenView {
         if picked { pick.style = .tinted(p.panel, NSColor.white.withAlphaComponent(0.1), p.accent); pick.border = p.glassBorder } else { pick.style = .glass }
         download.isHidden = item.isPerson || !ctx.downloadsConfigured
         recommend.isHidden = item.isPerson
+        requestSeasons.isHidden = !(item.isSeries && moreSeasons)
         // Download and Recommend wear the poster's tint, as WatchList does.
         for b in [download, recommend] {
             if let tint {
