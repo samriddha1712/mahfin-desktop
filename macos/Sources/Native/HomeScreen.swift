@@ -1,13 +1,15 @@
 import AppKit
 
 /*
- * Mahfin's home page (src/app/(app)/page.tsx, the top-bar shell), natively.
+ * Mahfin's home page (src/app/(app)/page.tsx), natively: under the top bar
+ * (Golden Hour) or the board (IOS, whose top is BoardHome.swift).
  * Same rows, same order, same requests; each row loads on its own, from its
  * kept copy first, and a row with nothing in it takes no space.
  */
 @MainActor
 final class HomeScreen: ScreenView {
-    private let hero: HeroView
+    /// Golden Hour's full-bleed hero, or the IOS theme's deck (BoardTop).
+    private let hero: any HomeTop
     private let mood: MoodStrip
     private let glow = AmbientGlow()
     private var order: [NSView] = []
@@ -38,9 +40,17 @@ final class HomeScreen: ScreenView {
     private lazy var ottRow = RowView(title: "OTTs", kind: .otts, ctx: ctx)
 
     init(ctx: NativeContext) {
-        hero = HeroView(ctx: ctx)
-        mood = MoodStrip(ctx: ctx)
-        super.init(route: .home, ctx: ctx)
+        if ctx.shell == "board" {
+            let board = BoardTop(ctx: ctx)
+            hero = board
+            mood = MoodStrip(ctx: ctx)
+            super.init(route: .home, ctx: ctx)
+            board.onHeight = { [weak self] in self?.needsLayout = true }
+        } else {
+            hero = HeroView(ctx: ctx)
+            mood = MoodStrip(ctx: ctx)
+            super.init(route: .home, ctx: ctx)
+        }
         indian.tricolour = true
         // Under the scroll view, fixed to the window, as the web's fixed layer.
         layer?.insertSublayer(glow, at: 0)
@@ -77,10 +87,11 @@ final class HomeScreen: ScreenView {
 
     override func layoutDocument(width: CGFloat) {
         let viewport = scroll.contentView.bounds.height
-        let heroHeight = max(480, (viewport * 0.78).rounded())
+        let heroHeight = hero.height(for: width, viewport: viewport)
         hero.frame = NSRect(x: 0, y: 0, width: width, height: heroHeight)
-        // The rows ride up over the hero's last 24 points, as on the web.
-        let bottom = stack(order, from: heroHeight - 24, width: width, gap: 40) { v in
+        // The rows ride up over the hero's last 24 points, as on the web (or,
+        // under the board, start 40 below it).
+        let bottom = stack(order, from: heroHeight - hero.overlap, width: width, gap: 40) { v in
             (v as? RowView)?.height ?? (v as? MoodStrip)?.height(for: width) ?? 0
         }
         document.frame = NSRect(x: 0, y: 0, width: width, height: max(bottom + 120, viewport))

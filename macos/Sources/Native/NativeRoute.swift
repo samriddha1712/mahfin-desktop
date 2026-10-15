@@ -40,8 +40,8 @@ enum NativeRoute: Equatable, Hashable {
 /// What the web app reports on every route change.
 struct WebRouteState {
     var path: String
-    /// "topbar", "board", "studio" or "rail". Native screens are drawn only
-    /// under "topbar" for now; the others keep their web pages.
+    /// "topbar", "board", "studio" or "rail". Native screens are drawn under
+    /// "topbar" and "board"; the others keep their web pages.
     var shell: String
     var theme: String
     var session: NativeSession?
@@ -63,8 +63,10 @@ struct WebRouteState {
         session = rawSession.flatMap(NativeSession.init)
     }
 
+    static let nativeShells: Set<String> = ["topbar", "board"]
+
     var nativeRoute: NativeRoute? {
-        guard shell == "topbar", session != nil else { return nil }
+        guard WebRouteState.nativeShells.contains(shell), session != nil else { return nil }
         return NativeRoute(path: path)
     }
 }

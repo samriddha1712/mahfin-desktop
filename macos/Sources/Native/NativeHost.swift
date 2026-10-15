@@ -35,6 +35,10 @@ final class NativeHost {
     private var cache: [NativeRoute: ScreenView] = [:]
     private var recent: [NativeRoute] = []
     private var barHeight: CGFloat = 64
+    /// The web app's shell and theme ("topbar/goldenhour", "board/ios"), kept
+    /// for the next launch so a kept session's first page is drawn in it.
+    private var look = UserDefaults.standard.string(forKey: "mahfin.native.look") ?? "topbar/goldenhour"
+    private var shell: String { String(look.split(separator: "/").first ?? "topbar") }
     private var webMode = WebMode.full
     private var overlay = false
     private var pending: (path: String, at: Date)?
@@ -69,7 +73,8 @@ final class NativeHost {
         Theme.registerFonts()
         NativeHost.shared = self
         // A kept session draws the home page before the web app has booted.
-        if let kept = Keychain.loadSession() {
+        Theme.use(String(look.split(separator: "/").last ?? "goldenhour"))
+        if drawsNatively(look), let kept = Keychain.loadSession() {
             adoptReported(kept)
             show(.home, animated: false)
         }
@@ -83,8 +88,44 @@ final class NativeHost {
 
     // MARK: From the web app
 
+    /// Whether `look`'s shell is one drawn natively.
+    private func drawsNatively(_ look: String) -> Bool {
+        WebRouteState.nativeShells.contains(String(look.split(separator: "/").first ?? ""))
+    }
+
+    /// The last report, for dev builds' theme-switch check (`debugLook`).
+    private var lastState: WebRouteState?
+
+    /// For dev builds: the last report again, under another shell and theme.
+    func debugLook(_ look: String) {
+        guard var s = lastState else { return }
+        let parts = look.split(separator: "/").map(String.init)
+        guard parts.count == 2 else { return }
+        s.shell = parts[0]
+        s.theme = parts[1]
+        s.barHeight = parts[0] == "board" ? 72 : 64
+        route(s)
+    }
+
     func route(_ state: WebRouteState) {
-        Theme.use(state.theme)
+        lastState = state
+        let look = state.shell + "/" + state.theme
+        if look != self.look {
+            // A new theme: every kept page was drawn in the old one's colours
+            // (and the home page's top differs by shell), so build them again.
+            self.look = look
+            UserDefaults.standard.set(look, forKey: "mahfin.native.look")
+            Theme.use(state.theme)
+            ctx?.shell = state.shell
+            if currentActive { current?.deactivate() }
+            currentActive = false
+            cache.values.forEach { $0.removeFromSuperview() }
+            cache.removeAll()
+            current = nil
+            recent.removeAll()
+            setBarGlass(false)
+            root.needsLayout = true
+        }
         barHeight = CGFloat(state.barHeight)
         if let s = state.session {
             if s != reported { adoptReported(s) }
@@ -190,6 +231,7 @@ final class NativeHost {
         currentActive = false
         session = s
         let ctx = NativeContext(session: s) { [weak self] path in self?.open(path) }
+        ctx.shell = shell
         ctx.openDialog = { [weak self] spec in self?.callNav?("openDialog", spec) }
         self.ctx = ctx
         cache.values.forEach { $0.removeFromSuperview() }
@@ -309,10 +351,13 @@ final class NativeHost {
         }
     }
 
+    /// The blur behind the web bar: once the page is scrolled under Golden
+    /// Hour's bar, always under the board's (`.board-glass-bar` is frosted).
     private func setBarGlass(_ on: Bool) {
+        let show = on || shell == "board"
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.3
-            barBlur.animator().alphaValue = on ? 1 : 0
+            barBlur.animator().alphaValue = show ? 1 : 0
         }
     }
 

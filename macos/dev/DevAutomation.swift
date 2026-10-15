@@ -69,6 +69,22 @@ enum DevAutomation {
                         print("[dev] savetest +\(ms)ms", cell.title.stringValue, cell.window != nil, cell.debugFeedback); fflush(stdout)
                     }
                     if arg == "local", let ctx = NativeHost.shared?.debugContext { ctx.debugToggleLocally(cell.debugKey) }
+                case "webshot":
+                    // The web view's own pixels (layer renders cannot see them).
+                    if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView,
+                       let img = try? await web.takeSnapshot(configuration: nil),
+                       let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+                       let png = rep.representation(using: .png, properties: [:]) {
+                        try? png.write(to: URL(fileURLWithPath: arg))
+                        print("[dev] webshot", arg); fflush(stdout)
+                    }
+                case "webfull":
+                    // Hand the whole window to the web view (native screens off), for checks of web-drawn themes.
+                    if let web = window?.contentView?.subviews.first(where: { $0 is WKWebView }) as? WKWebView,
+                       let c = window?.contentView {
+                        web.frame = c.bounds
+                        c.subviews.filter { !($0 is WKWebView) }.forEach { $0.isHidden = true }
+                    }
                 case "route":
                     print("[dev] route", NativeHost.shared?.debugRoute ?? "-"); fflush(stdout)
                 case "badges":
@@ -125,6 +141,18 @@ enum DevAutomation {
                         return nil
                     }
                     if let c = window?.contentView, let h = find(c) { print("[dev] hero", h.debugState); fflush(stdout) }
+                case "look": NativeHost.shared?.debugLook(arg)
+                case "deck":
+                    func findDeck(_ v: NSView) -> DeckView? {
+                        if let d = v as? DeckView { return d }
+                        for s in v.subviews { if let d = findDeck(s) { return d } }
+                        return nil
+                    }
+                    if let c = window?.contentView, let d = findDeck(c) {
+                        print("[dev] deck", d.frame, d.debugState, "clips", d.layer?.masksToBounds ?? false)
+                        for line in d.debugCards { print("[dev]   ", line) }
+                        fflush(stdout)
+                    }
                 case "meterfake":
                     func findMeter(_ v: NSView) -> MeterView? {
                         if let m = v as? MeterView { return m }

@@ -16,6 +16,8 @@ final class NativeContext {
     var openDialog: ((String) -> Void)?
     /// Whether this build has a download route (the web's `downloadsConfigured`).
     var downloadsConfigured = false
+    /// The web app's shell: "topbar" (Golden Hour) or "board" (IOS).
+    var shell = "topbar"
     /// Whether this person is a Jellyfin administrator (Editor's pick).
     var isAdmin = false
     /// What friends said of each title ("movie:<tmdb>"), newest first, for

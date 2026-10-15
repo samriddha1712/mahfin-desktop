@@ -38,14 +38,21 @@ enum Theme {
                 blue: CGFloat(hex & 0xff) / 255, alpha: alpha)
     }
 
-    /// Mahfin's globals.css, `[data-theme="goldenhour"]` — the only theme whose
-    /// shell is the top bar, which is the only shell drawn natively so far.
+    /// Mahfin's globals.css: the themes whose shells are drawn natively (the
+    /// top bar's Golden Hour and the board's IOS).
     static var palettes: [String: Palette] = [
         "goldenhour": Palette(
             void: rgb(0x08080a), void2: rgb(0x101014), ink: rgb(0xf5f5f7), muted: rgb(0x9a9aa2),
             accent: rgb(0xe8b54a), accentInk: rgb(0x2a1e08),
             glass: rgb(0xffffff, 0.06), glassStrong: rgb(0xffffff, 0.11), glassBorder: rgb(0xffffff, 0.14),
             panel: rgb(0x0e0e12, 0.72), placeholderFrom: rgb(0x1b1b22), placeholderTo: rgb(0x101014),
+            alert: rgb(0xe5484d)),
+        // `[data-theme="ios"]`, the board shell: warm black, bone-white accent.
+        "ios": Palette(
+            void: rgb(0x0a0908), void2: rgb(0x17140f), ink: rgb(0xf7f5f2), muted: rgb(0x9a938a),
+            accent: rgb(0xf2ede3), accentInk: rgb(0x14110d),
+            glass: rgb(0xffffff, 0.05), glassStrong: rgb(0xffffff, 0.09), glassBorder: rgb(0xffffff, 0.1),
+            panel: rgb(0x12100d, 0.82), placeholderFrom: rgb(0x241f18), placeholderTo: rgb(0x17140f),
             alert: rgb(0xe5484d)),
     ]
 

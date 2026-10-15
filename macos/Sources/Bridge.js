@@ -107,7 +107,7 @@
     settings: { main },
     settingsUpdate,
     // Protocol version of the native pages; Mahfin's lib/nativeScreens reads it.
-    native: { screens: 1 },
+    native: { screens: 2 },
   };
 
   const api = Object.freeze({ player, system, window: win, native });
