@@ -2,7 +2,7 @@ import AppKit
 
 /*
  * What every native page shares: the API, image addresses, the household's
- * request statuses and My List (so a card's buttons agree in every row), and
+ * request statuses and the WatchList (so a card's buttons agree in every row), and
  * the way out to the web router.
  */
 @MainActor
@@ -22,7 +22,7 @@ final class NativeContext {
     /// the badge on a card (the web's FriendsOnCard). One request per page.
     var friendVerdicts: [String: [FriendOnCard]] = [:]
     var statuses: [String: Int] = [:]
-    var saved: Set<String> = []          // "movie:123" keys on My List (watchlist)
+    var saved: Set<String> = []          // "movie:123" keys on WatchList (watchlist)
     private var listeners: [() -> Void] = []
 
     init(session: NativeSession, open: @escaping (String) -> Void) {
@@ -62,7 +62,13 @@ final class NativeContext {
 
     func status(_ item: DiscoverItem) -> Int? { statuses[item.key] ?? item.status }
 
-    /// My List for a title not in the library: optimistic, then the server's answer.
+    /// WatchList for a title not in the library: optimistic, then the server's answer.
+    /// For dev builds' checks: what a save does on screen, with no request.
+    func debugToggleLocally(_ key: String) {
+        if saved.contains(key) { saved.remove(key) } else { saved.insert(key) }
+        changed()
+    }
+
     func toggleSaved(_ item: DiscoverItem) {
         let on = !saved.contains(item.key)
         if on { saved.insert(item.key) } else { saved.remove(item.key) }
@@ -295,7 +301,7 @@ final class RowView: FlippedView {
         updateArrows(animated: false)
     }
 
-    /// Re-applies shared state (statuses, My List) to the cards on screen.
+    /// Re-applies shared state (statuses, WatchList) to the cards on screen.
     func refreshCards() { strip.reloadVisible() }
 
     /// Asks the strip to create or recycle cells for what is now on screen.

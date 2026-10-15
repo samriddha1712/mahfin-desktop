@@ -34,7 +34,7 @@ final class HomeScreen: ScreenView {
     private lazy var otts = RowView(title: "In OTTs soon", kind: .entries(ranked: false), seeAll: "/discover/browse/on-streaming-soon", ctx: ctx)
     private lazy var because1 = RowView(title: "Because you watched", kind: .entries(ranked: false), ctx: ctx)
     private lazy var topRated = RowView(title: "Highest rated films", kind: .entries(ranked: false), seeAll: "/discover/browse/top-rated-films", ctx: ctx)
-    private lazy var myList = RowView(title: "My List", kind: .posters, seeAll: "/watchlist", ctx: ctx)
+    private lazy var myList = RowView(title: "WatchList", kind: .posters, seeAll: "/watchlist", ctx: ctx)
     private lazy var ottRow = RowView(title: "OTTs", kind: .otts, ctx: ctx)
 
     init(ctx: NativeContext) {

@@ -45,6 +45,30 @@ enum DevAutomation {
                     }
                     if let c = window?.contentView { walk(c) }
                     print("[dev] buttons:", out.joined(separator: " | ")); fflush(stdout)
+                case "savetest":
+                    // Presses the first visible discover card's bookmark with
+                    // the server write unhooked, then reports what animated.
+                    var cells: [DiscoverCell] = []
+                    func walk(_ v: NSView) { if let c = v as? DiscoverCell, !c.isHidden, !c.visibleRect.isEmpty { cells.append(c) }; v.subviews.forEach(walk) }
+                    if let c = window?.contentView { walk(c) }
+                    guard let cell = cells.first else { print("[dev] no discover card"); break }
+                    if arg == "local", let ctx = NativeHost.shared?.debugContext {
+                        let key = cell.debugKey
+                        cell.onSave = { ctx.debugToggleLocally(key) }
+                    } else {
+                        cell.onSave = nil
+                    }
+                    cell.debugPressSave()
+                    // What a real save does next: ctx.changed() refreshes every row.
+                    if arg == "refresh" {
+                        func rows(_ v: NSView) { if let r = v as? RowView { r.refreshCards() }; v.subviews.forEach(rows) }
+                        if let c = window?.contentView { rows(c) }
+                    }
+                    for ms in [100, 400, 900] {
+                        try? await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000)
+                        print("[dev] savetest +\(ms)ms", cell.title.stringValue, cell.window != nil, cell.debugFeedback); fflush(stdout)
+                    }
+                    if arg == "local", let ctx = NativeHost.shared?.debugContext { ctx.debugToggleLocally(cell.debugKey) }
                 case "route":
                     print("[dev] route", NativeHost.shared?.debugRoute ?? "-"); fflush(stdout)
                 case "badges":

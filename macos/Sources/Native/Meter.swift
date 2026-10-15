@@ -292,7 +292,9 @@ private enum Motion {
         }
         a.keyTimes = times
         a.duration = duration
-        a.timingFunction = Theme.spring
+        // Per step, as CSS keyframes ease; one curve over the whole would
+        // bunch the steps into the first instant.
+        a.timingFunctions = Array(repeating: Theme.spring, count: max(1, values.count - 1))
         l.add(a, forKey: "pulse")
     }
 }

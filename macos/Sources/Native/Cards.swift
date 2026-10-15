@@ -382,8 +382,8 @@ final class WideCell: CardCell {
 // MARK: - Discover (a title from TMDB, maybe not in the library)
 
 /// DiscoverCard.tsx: a poster with its MOVIE/SHOW chip, an optional rank
-/// numeral over a top scrim, and an always-visible foot bar with the My List
-/// bookmark (pop, ring and "Added to My List") and the Request pill.
+/// numeral over a top scrim, and an always-visible foot bar with the WatchList
+/// bookmark (pop, ring and "Added to WatchList") and the Request pill.
 final class DiscoverCell: CardCell {
     static var size: NSSize { PosterCell.size }
     private let chip = CATextLayer()
@@ -444,7 +444,10 @@ final class DiscoverCell: CardCell {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    private(set) var debugKey = ""
+
     func configure(_ item: DiscoverItem, rank number: Int?, status: Int?, saved: Bool, tricolour: Bool = false) {
+        debugKey = item.key
         let sameItem = title.stringValue == (item.title ?? "") && wasSaved != nil
         if !sameItem { resetForReuse(); flash.reset() }
         tileHeight = bounds.width * 1.5
@@ -493,6 +496,13 @@ final class DiscoverCell: CardCell {
         needsLayout = true
     }
 
+    /// For dev builds' checks.
+    func debugPressSave() { pressedSave() }
+    var debugFeedback: String {
+        let icon = save.layer?.sublayers?.first(where: { $0 is CAShapeLayer })
+        return "pop=\(icon?.animation(forKey: "pop") != nil) flash=\(flash.debugState) saveFrame=\(save.frame) flashFrame=\(flash.frame) flashHidden=\(flash.isHidden) inWindow=\(flash.window != nil)"
+    }
+
     private func pressedSave() {
         let adding = !(wasSaved ?? false)
         // The icon pops (1 → 1.45 → 0.9 → 1, 480 ms on a spring); adding also
@@ -501,10 +511,12 @@ final class DiscoverCell: CardCell {
         pop.values = [1, 1.45, 0.9, 1]
         pop.keyTimes = [0, 0.3, 0.6, 1]
         pop.duration = 0.48
-        pop.timingFunction = Theme.spring
+        // Eased per step, as CSS keyframes are. One curve over the whole
+        // animation squeezed the steps together, so the pop barely showed.
+        pop.timingFunctions = [Theme.spring, Theme.spring, Theme.spring]
         save.layer?.sublayers?.first(where: { $0 is CAShapeLayer })?.add(pop, forKey: "pop")
         if adding { save.ring() }
-        flash.show(adding ? "Added to My List" : "Removed from My List", check: adding)
+        flash.show(adding ? "Added to WatchList" : "Removed from WatchList", check: adding)
         onSave?()
     }
 
@@ -519,7 +531,7 @@ final class DiscoverCell: CardCell {
     }
 }
 
-/// "Added to My List" / "Removed from My List" over the card's foot
+/// "Added to WatchList" / "Removed from WatchList" over the card's foot
 /// (`.list-flash`, 1.4 s: rises in, holds, lifts away).
 final class FlashPill: FlippedView {
     private let pill = CALayer()
@@ -542,6 +554,8 @@ final class FlashPill: FlippedView {
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
+    var debugState: String { "anim=\(pill.animation(forKey: "flash") != nil) opacity=\(pill.presentation()?.opacity ?? -1) pill=\(pill.frame)" }
+
     func reset() {
         pill.removeAllAnimations()
         pill.opacity = 0
@@ -562,14 +576,18 @@ final class FlashPill: FlippedView {
         let fade = CAKeyframeAnimation(keyPath: "opacity")
         fade.values = [0, 1, 1, 0]
         fade.keyTimes = [0, 0.14, 0.78, 1]
+        // Per step: in, hold, out. With expo-out over the whole 1.4 s (as it
+        // was) the hold and the fade both came in the first 0.3 s — the pill
+        // was half gone at 0.4 s and read as no feedback at all.
+        fade.timingFunctions = [Theme.expoOut, CAMediaTimingFunction(name: .linear), Theme.expoOut]
         let rise = CAKeyframeAnimation(keyPath: "transform")
         let start = CATransform3DScale(CATransform3DMakeTranslation(0, 6, 0), 0.92, 0.92, 1)
         rise.values = [start, CATransform3DIdentity, CATransform3DIdentity, CATransform3DMakeTranslation(0, -3, 0)]
         rise.keyTimes = [0, 0.14, 0.78, 1]
+        rise.timingFunctions = [Theme.expoOut, CAMediaTimingFunction(name: .linear), Theme.expoOut]
         let g = CAAnimationGroup()
         g.animations = [fade, rise]
         g.duration = 1.4
-        g.timingFunction = Theme.expoOut
         pill.add(g, forKey: "flash")
     }
 }

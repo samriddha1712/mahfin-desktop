@@ -3,7 +3,7 @@ import AppKit
 /*
  * A title's page (Mahfin's src/app/(app)/item/[id]/page.tsx), natively: the
  * backdrop header, poster, logo or title, the ticket and meta lines, progress,
- * Play / Resume, My List and Mark watched, the overview, seasons and episodes,
+ * Play / Resume, WatchList and Mark watched, the overview, seasons and episodes,
  * the Mahfin Meter, cast, and "More like this". Play goes to the web player, as every Play does.
  */
 @MainActor
@@ -26,7 +26,7 @@ final class ItemScreen: ScreenView {
     private let progressFill = CALayer()
     private let progressLabel = makeLabel(font: Theme.text(12.5), color: Theme.palette.muted)
     private let play = PillButton("Play", style: .accent, height: 46, fontSize: 15)
-    private let favorite = PillButton("My List", style: .glass, height: 46, fontSize: 15)
+    private let favorite = PillButton("WatchList", style: .glass, height: 46, fontSize: 15)
     private let watched = PillButton("Mark watched", style: .glass, height: 46, fontSize: 15)
     // The rest of the web page's row: each opens the web's own dialog over
     // this page (Collection, Download, Recommend) or flips a pick in place.
@@ -37,7 +37,7 @@ final class ItemScreen: ScreenView {
     private var picked = false
     private var pickBusy = false
     private var pickFull = false
-    /// The poster's colour at 16%, laid over My List's glass (the web tints it
+    /// The poster's colour at 16%, laid over WatchList's glass (the web tints it
     /// from the poster's blurhash).
     private var tint: NSColor?
     private let overview = makeLabel(font: Theme.text(15), color: Theme.palette.ink.withAlphaComponent(0.8), lines: 0)
@@ -114,7 +114,7 @@ final class ItemScreen: ScreenView {
     }
     required init?(coder: NSCoder) { fatalError("not used") }
 
-    /// Web order: Play, My List, Collection, Watched, Pick, Download, Recommend.
+    /// Web order: Play, WatchList, Collection, Watched, Pick, Download, Recommend.
     private var actionButtons: [PillButton] { [play, favorite, collection, watched, pick, download, recommend] }
 
     private func dialog(_ kind: String) {
@@ -257,7 +257,7 @@ final class ItemScreen: ScreenView {
         play.icon = ready ? .play : nil
         play.isEnabled = ready
         let fav = item.UserData?.IsFavorite == true
-        favorite.title = fav ? "In My List" : "My List"
+        favorite.title = fav ? "In WatchList" : "WatchList"
         favorite.icon = fav ? .check : .plus
         let p = Theme.palette
         if fav {
@@ -283,7 +283,7 @@ final class ItemScreen: ScreenView {
         if picked { pick.style = .tinted(p.panel, NSColor.white.withAlphaComponent(0.1), p.accent); pick.border = p.glassBorder } else { pick.style = .glass }
         download.isHidden = item.isPerson || !ctx.downloadsConfigured
         recommend.isHidden = item.isPerson
-        // Download and Recommend wear the poster's tint, as My List does.
+        // Download and Recommend wear the poster's tint, as WatchList does.
         for b in [download, recommend] {
             if let tint {
                 let rest = p.panel.blended(withFraction: 0.16, of: tint) ?? p.panel

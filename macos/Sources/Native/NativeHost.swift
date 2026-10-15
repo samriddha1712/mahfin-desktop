@@ -166,6 +166,8 @@ final class NativeHost {
         }
     }
 
+    var debugContext: NativeContext? { ctx }
+
     /// For dev builds' checks: the route reported and the route in use.
     var debugRoute: String {
         "reported=\(reported?.server.host ?? "-") using=\(session?.server.host ?? "-") configured=\(session?.configuredServer.host ?? "-")"
