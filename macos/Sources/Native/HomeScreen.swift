@@ -62,7 +62,10 @@ final class HomeScreen: ScreenView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     private func rebuildOrder() {
-        let before: [NSView] = [resume, nextUp, editors, talk, landed, soon, leaving, mood, trending, indian, popularMovies, popularShows]
+        // Under the board (IOS), Continue watching is beside the deck instead
+        // (BoardTop), so the row would say the same thing twice.
+        let resumeRow: [NSView] = ctx.shell == "board" ? [] : [resume]
+        let before: [NSView] = resumeRow + [nextUp, editors, talk, landed, soon, leaving, mood, trending, indian, popularMovies, popularShows]
         let after: [NSView] = [because0, cinemas, otts, because1, topRated, myList, ottRow]
         order = before + latest + after
         for v in order where v.superview == nil {

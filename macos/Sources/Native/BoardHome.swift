@@ -87,7 +87,9 @@ final class BoardTop: FlippedView, HomeTop {
         let deckW = wide ? inner - sideW - 24 : inner
         // The deck: full width of its column at 2.25:1, never taller than what
         // leaves the first row of posters on screen (the web's clamp).
-        let deckH = min(deckW / 2.25, min(560, max(280, viewport - 500)))
+        // Taller under the board now that its Continue watching row is gone
+        // (globals.css `.board-deck .studio-deck`).
+        let deckH = min(deckW / 2.05, min(640, max(320, viewport - 380)))
         deck.frame = NSRect(x: x, y: top, width: deckW, height: deckH)
         // Beside the deck the panel is the deck's height, and holds as many
         // titles as fit (owner's ask, 2026-10-16); under it, three.
@@ -780,30 +782,34 @@ final class DeckCard: FlippedView {
 @MainActor
 final class NowWatchingView: FlippedView {
     private let ctx: NativeContext
-    private let heading = makeLabel("Now watching", font: Theme.display(20, .semibold), color: Theme.palette.ink)
+    private let heading = makeLabel("Continue watching", font: Theme.display(20, .semibold), color: Theme.palette.ink)
     private let bar = CALayer()
-    private let shine = ShadeLayer()
+    /// No panel (owner's ask, 2026-10-16): a backdrop that is not there at the
+    /// top and comes up towards the foot, and a hairline only along the bottom
+    /// (globals.css `.cw-side::before`).
+    private let wash = ShadeLayer()
+    private let rim = CALayer()
+    private let rimMask = ShadeLayer()
+    private let scroll = EdgeScrollView()
+    private let list = FlippedView()
+    private let listFade = ShadeLayer()
     private var rows: [NowWatchingRow] = []
     var onHeight: (() -> Void)?
 
     init(ctx: NativeContext) {
         self.ctx = ctx
         super.init(frame: .zero)
-        // `.board-glass-panel`: a dark tint, a fine rim, a lit top edge.
-        layer?.cornerRadius = 22
-        layer?.cornerCurve = .continuous
-        layer?.backgroundColor = Theme.palette.void.withAlphaComponent(0.5).cgColor
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.1).cgColor
-        layer?.borderWidth = 1
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.7
-        layer?.shadowRadius = 25
-        layer?.shadowOffset = CGSize(width: 0, height: -18)
         layer?.masksToBounds = false
-        shine.set([NSColor.white.withAlphaComponent(0.085), NSColor.white.withAlphaComponent(0.025), NSColor.white.withAlphaComponent(0.025)], at: [0, 0.55, 1])
-        shine.cornerRadius = 22
-        shine.masksToBounds = true
-        layer?.addSublayer(shine)
+        wash.set([.clear, NSColor.white.withAlphaComponent(0.02), NSColor.white.withAlphaComponent(0.075)], at: [0, 0.45, 1])
+        wash.cornerRadius = 22
+        wash.masksToBounds = true
+        layer?.addSublayer(wash)
+        rim.cornerRadius = 22
+        rim.borderWidth = 1
+        rim.borderColor = NSColor.white.withAlphaComponent(0.1).cgColor
+        rimMask.set([.clear, .clear, .black], at: [0, 0.3, 1])
+        rim.mask = rimMask
+        layer?.addSublayer(rim)
         bar.backgroundColor = Theme.palette.accent.cgColor
         bar.cornerRadius = 2.5
         bar.shadowColor = Theme.palette.accent.cgColor
@@ -812,6 +818,15 @@ final class NowWatchingView: FlippedView {
         bar.shadowOffset = .zero
         layer?.addSublayer(bar)
         addSubview(heading)
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = false
+        scroll.hasHorizontalScroller = false
+        scroll.horizontalScrollElasticity = .none
+        scroll.documentView = list
+        scroll.wantsLayer = true
+        // The list fades out at its two edges as it scrolls under them.
+        scroll.layer?.mask = listFade
+        addSubview(scroll)
         isHidden = true
         reload()
     }
@@ -821,16 +836,16 @@ final class NowWatchingView: FlippedView {
         let api = ctx.api
         Task { [weak self] in
             await api.load(JFItems.self, .jellyfin, "UserItems/Resume", [
-                "userId": api.session.userId, "limit": "12", "mediaTypes": "Video",
+                "userId": api.session.userId, "limit": "16", "mediaTypes": "Video",
                 "fields": "PrimaryImageAspectRatio,MediaSourceCount,ProviderIds", "enableImageTypes": "Primary,Backdrop,Thumb",
             ]) { r in
                 guard let self else { return }
                 var seen = Set<String>()
-                let items = r.Items.filter { seen.insert(($0.isEpisode ? $0.SeriesId : $0.Id) ?? $0.Id).inserted }.prefix(12)
+                let items = r.Items.filter { seen.insert(($0.isEpisode ? $0.SeriesId : $0.Id) ?? $0.Id).inserted }
                 self.rows.forEach { $0.removeFromSuperview() }
                 self.rows = items.map { item in
                     let row = NowWatchingRow(item: item, ctx: self.ctx)
-                    self.addSubview(row)
+                    self.list.addSubview(row)
                     return row
                 }
                 self.isHidden = self.rows.isEmpty
@@ -848,40 +863,59 @@ final class NowWatchingView: FlippedView {
         didSet { if fixedHeight != oldValue { needsLayout = true } }
     }
 
-    private static let head: CGFloat = 20 + 28 + 16
+    private static let head: CGFloat = 28 + 12
     private static let row: CGFloat = 68
     private static let gap: CGFloat = 16
-
-    /// How many rows the panel shows: what fits beside the deck, else three.
-    private var fit: Int {
-        guard let h = fixedHeight else { return min(3, rows.count) }
-        let room = h - NowWatchingView.head - 20
-        return min(rows.count, max(1, Int((room + NowWatchingView.gap) / (NowWatchingView.row + NowWatchingView.gap))))
-    }
 
     func height(for width: CGFloat) -> CGFloat {
         if isHidden { return 0 }
         if let h = fixedHeight { return h }
-        let n = CGFloat(fit)
-        return NowWatchingView.head + n * NowWatchingView.row + max(0, n - 1) * NowWatchingView.gap + 20
+        // Under the deck: up to four, and the rest by scrolling (`max-h-[420px]`).
+        let n = CGFloat(min(4, rows.count))
+        return NowWatchingView.head + 4 + n * NowWatchingView.row + max(0, n - 1) * NowWatchingView.gap + 24
     }
 
     override func layout() {
         super.layout()
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        shine.frame = bounds
-        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 22, cornerHeight: 22, transform: nil)
-        let hs = heading.fitSize
-        bar.frame = CGRect(x: 20, y: 20 + (28 - 19) / 2, width: 5, height: 19)
+        wash.frame = bounds
+        rim.frame = bounds
+        rimMask.frame = rim.bounds
+        bar.frame = CGRect(x: 4, y: (28 - 19) / 2, width: 5, height: 19)
         CATransaction.commit()
-        heading.frame = NSRect(x: 35, y: 20 + (28 - hs.height) / 2, width: bounds.width - 55, height: hs.height)
-        var y = NowWatchingView.head
-        let shown = fit
-        for (i, r) in rows.enumerated() {
-            r.isHidden = i >= shown
-            r.frame = NSRect(x: 20, y: y, width: bounds.width - 40, height: NowWatchingView.row)
+        let hs = heading.fitSize
+        heading.frame = NSRect(x: 19, y: (28 - hs.height) / 2, width: bounds.width - 23, height: hs.height)
+        let top = NowWatchingView.head
+        scroll.frame = NSRect(x: 4, y: top, width: max(0, bounds.width - 8), height: max(0, bounds.height - top))
+        var y: CGFloat = 4
+        for r in rows {
+            r.frame = NSRect(x: 0, y: y, width: scroll.frame.width, height: NowWatchingView.row)
             y += NowWatchingView.row + NowWatchingView.gap
         }
+        list.frame = NSRect(x: 0, y: 0, width: scroll.frame.width, height: max(y - NowWatchingView.gap + 24, scroll.frame.height))
+        let h = max(1, scroll.frame.height)
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        listFade.set([.clear, .black, .black, .clear], at: [0, min(0.4, 10 / h), max(0.6, 1 - 34 / h), 1])
+        listFade.frame = scroll.bounds
+        CATransaction.commit()
+    }
+}
+
+/// A vertical list inside the page: it scrolls while it can, and hands the
+/// wheel to the page once it is at an end (or has nothing to scroll), so the
+/// page never feels stuck under the pointer.
+final class EdgeScrollView: NSScrollView {
+    override func scrollWheel(with event: NSEvent) {
+        let clip = contentView.bounds
+        let docH = documentView?.frame.height ?? 0
+        let dy = event.scrollingDeltaY
+        let fits = docH <= clip.height + 1
+        let atTop = clip.minY <= 0.5, atBottom = clip.maxY >= docH - 0.5
+        if fits || (dy > 0 && atTop) || (dy < 0 && atBottom) || abs(event.scrollingDeltaX) > abs(dy) {
+            nextResponder?.scrollWheel(with: event)
+            return
+        }
+        super.scrollWheel(with: event)
     }
 }
 
@@ -893,6 +927,9 @@ final class NowWatchingRow: FlippedView {
     private let playDot = CAShapeLayer()
     private let dim = CALayer()
     private let title = makeLabel(font: Theme.text(15, .semibold), color: Theme.palette.ink)
+    /// The accent line drawn in under the name on hover (`.wide-caption-title`).
+    private let underline = CALayer()
+    private var hovering = false
     private let meta = makeLabel(font: Theme.text(12), color: Theme.palette.muted)
     private let percent = makeLabel(font: Theme.text(11, .semibold), color: Theme.palette.accent)
     private let track = CALayer()
@@ -973,6 +1010,19 @@ final class NowWatchingRow: FlippedView {
         let ts = title.fitSize
         var y: CGFloat = chips.isEmpty ? 14 : 2
         title.frame = NSRect(x: x, y: y, width: min(ts.width, w), height: ts.height)
+        if underline.superlayer == nil {
+            underline.backgroundColor = Theme.palette.accent.cgColor
+            underline.anchorPoint = CGPoint(x: 0, y: 0.5)
+            underline.shadowColor = Theme.palette.accent.cgColor
+            underline.shadowOpacity = 0.55
+            underline.shadowRadius = 7
+            underline.shadowOffset = .zero
+            layer?.addSublayer(underline)
+        }
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        underline.position = CGPoint(x: title.frame.minX + 2, y: title.frame.maxY)
+        underline.bounds = CGRect(x: 0, y: 0, width: hovering ? title.frame.width - 4 : 0, height: 1.5)
+        CATransaction.commit()
         y = title.frame.maxY + 6
         var cx = x
         for c in chips {
@@ -995,11 +1045,21 @@ final class NowWatchingRow: FlippedView {
     }
     override func mouseEntered(with event: NSEvent) {
         dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.45).cgColor
-        title.textColor = Theme.palette.accent
+        setUnderline(true)
     }
     override func mouseExited(with event: NSEvent) {
         dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.25).cgColor
-        title.textColor = Theme.palette.ink
+        setUnderline(false)
+    }
+
+    /// Drawn in from the left over 320 ms, out the same way (globals.css).
+    private func setUnderline(_ on: Bool) {
+        hovering = on
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.32)
+        CATransaction.setAnimationTimingFunction(Theme.expoOut)
+        underline.bounds = CGRect(x: 0, y: 0, width: on ? max(0, title.frame.width - 4) : 0, height: 1.5)
+        CATransaction.commit()
     }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func mouseUp(with event: NSEvent) {
