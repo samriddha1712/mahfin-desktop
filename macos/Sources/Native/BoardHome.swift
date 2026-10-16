@@ -924,7 +924,6 @@ final class NowWatchingRow: FlippedView {
     private let item: JFItem
     private let ctx: NativeContext
     private let thumb = RemoteImage()
-    private let playDot = CAShapeLayer()
     private let dim = CALayer()
     private let title = makeLabel(font: Theme.text(15, .semibold), color: Theme.palette.ink)
     /// The accent line drawn in under the name on hover (`.wide-caption-title`).
@@ -961,12 +960,10 @@ final class NowWatchingRow: FlippedView {
         percent.stringValue = item.progress.map { "\(Int(($0 * 100).rounded()))%" } ?? ""
         percent.isHidden = item.progress == nil
         addSubview(percent)
-        dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.25).cgColor
+        dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.1).cgColor
         box.addSublayer(dim)
-        playDot.fillColor = NSColor.white.withAlphaComponent(0.25).cgColor
-        playDot.strokeColor = NSColor.white.withAlphaComponent(0.3).cgColor
-        playDot.lineWidth = 1
-        box.addSublayer(playDot)
+        // No play mark on the picture (owner's ask, 2026-10-16): the still is
+        // the button, and it darkens a little on hover.
         box.addSublayer(track)
         thumb.load(ctx.art.wide(item, width: 320), points: 120, scale: NSScreen.main?.backingScaleFactor ?? 2)
         title.stringValue = item.isEpisode ? (item.SeriesName ?? item.Name ?? "") : (item.Name ?? "")
@@ -999,8 +996,6 @@ final class NowWatchingRow: FlippedView {
         box.frame = CGRect(x: 0, y: 0, width: 120, height: 68)
         thumb.layer.frame = box.bounds
         dim.frame = box.bounds
-        let r: CGFloat = 16
-        playDot.path = CGPath(ellipseIn: CGRect(x: 60 - r, y: 34 - r, width: r * 2, height: r * 2), transform: nil)
         track.frame = CGRect(x: 0, y: 65, width: 120, height: 3)
         fill.bounds = CGRect(x: 0, y: 0, width: 120 * (item.progress ?? 0), height: 3)
         fill.position = CGPoint(x: 0, y: 1.5)
@@ -1044,11 +1039,11 @@ final class NowWatchingRow: FlippedView {
         tracking = t
     }
     override func mouseEntered(with event: NSEvent) {
-        dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.45).cgColor
+        dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.35).cgColor
         setUnderline(true)
     }
     override func mouseExited(with event: NSEvent) {
-        dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.25).cgColor
+        dim.backgroundColor = Theme.palette.void.withAlphaComponent(0.1).cgColor
         setUnderline(false)
     }
 
