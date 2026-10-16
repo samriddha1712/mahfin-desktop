@@ -237,10 +237,10 @@
         "default": "auto"
       },
       {
-        "value": "normalize",
-        "display_name": "Normalize",
-        "help": "Enable audio volume normalization.",
-        "default": true
+        "value": "normalize_downmix",
+        "display_name": "Normalize downmix",
+        "help": "When surround audio is mixed down to stereo, lower its volume so the mix can never clip. Off by default: browsers do not do this, and with it on a 5.1 film plays about 8 dB quieter here than in a browser.",
+        "default": false
       },
       {
         "value": "exclusive",

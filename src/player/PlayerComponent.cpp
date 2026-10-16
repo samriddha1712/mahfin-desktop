@@ -1301,7 +1301,14 @@ void PlayerComponent::setAudioConfiguration()
 
   updateAudioDevice();
 
-  bool normalize = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "normalize").toBool();
+  // Off unless asked for. With mpv's downmix normalisation on (the old
+  // "normalize" setting, on by default and saved into every install's
+  // settings), a 5.1 track mixed to stereo is scaled by 1 / (front + centre
+  // + surround) — with surround_mix_level=1 below, about -8.6 dB — so films
+  // played a third as loud as in a browser, which does not normalise
+  // (reported by Windows viewers, 2026-10-16). A new key, so the saved "true"
+  // under the old one no longer applies.
+  bool normalize = SettingsComponent::Get().value(SETTINGS_SECTION_AUDIO, "normalize_downmix").toBool();
   m_mpv->setProperty( "audio-normalize-downmix", normalize ? "yes" : "no");
 
   // Make downmix more similar to PHT.
